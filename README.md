@@ -1,4 +1,4 @@
-# LQR_CBF_rrtStart
+## LQR_CBF_rrtStar
 
 ### current metric:
 (1) No need to solve QP in steer
