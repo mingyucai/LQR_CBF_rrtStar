@@ -11,6 +11,8 @@
 ### To Do:
 (1). Add LQR
 
-(2). Improve the scalability
+(2). High-order CBF
 
-(3). 3D RRT* and use matplotlib for render
+(3). Multiple Obstacles using non-smooth CBF
+
+(4). 3D environment
