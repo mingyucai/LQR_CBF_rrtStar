@@ -154,16 +154,12 @@ class LQRrrtStar:
             return None
 
         if len(node_index) > 0:
-            cost_list = [dist_list[i] + self.cost(self.vertex[i]) for i in node_index
+            cost_list = [dist_list[i] + self.vertex[i].cost for i in node_index
                          if not self.utils.is_collision(self.vertex[i], self.s_goal)]
             return node_index[int(np.argmin(cost_list))]
 
         return len(self.vertex) - 1
 
-    def get_new_cost(self, node_start, node_end):
-        dist, _ = self.get_distance_and_angle(node_start, node_end)
-
-        return self.cost(node_start) + dist
 
     def generate_random_node(self, goal_sample_rate):
         delta = self.utils.delta

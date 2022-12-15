@@ -7,9 +7,11 @@
 
 (3) Online planning animation
 
+(4) LQR_rrtStar
+
 
 ### To Do:
-(1). Add LQR
+(1). Modify collision-check of LQR using CBF
 
 (2). High-order CBF
 
