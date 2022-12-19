@@ -55,6 +55,7 @@ class CBF_RRT:
         self.T = 0.2  #Integration Length
         self.N = 50 # Number of Control Updates
         self.y0 = initial_state
+        self.k = 3 # k nearest neighbor obstacles that will be used for generating CBF constraint
         self.k_cbf = 1.0 #CBF coefficient
         self.p_cbf = 1 #CBF constraint power
         self.x_obstacle = obstacle_list
@@ -120,7 +121,7 @@ class CBF_RRT:
         '''
         return np.array([[u1],[u2]])
 
-    def find_knn_obstacle(x_current, x_obstacles,k):
+    def find_knn_obstacle(self, x_current, x_obstacles,k):
         '''
             Take in current node's position and obstacles list and integer k
             return k obstacles index based on distance (from close to far)
@@ -169,14 +170,15 @@ class CBF_RRT:
         # Control Acutuator Constraints
         u1_ref = np.clip(u1_ref, self.u1_lower_lim, self.u1_upper_lim)
         u2_ref = np.clip(u2_ref, self.u2_lower_lim, self.u1_upper_lim)
+        
+        knn_obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
 
         # check CBF constraint
-        for i in range(0,len(self.x_obstacle)):
-            h = (x1-self.x_obstacle[i][0])**2+(x2-self.x_obstacle[i][1])**2-self.x_obstacle[i][2]**2
+        for index in knn_obstacle_index:
+            h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
 
-            lgh = 2*(x1-self.x_obstacle[i][0])*u1_ref+2*(x2-self.x_obstacle[i][1])*u2_ref
+            lgh = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
             CBF_Constraint = lgh+self.k_cbf*h**self.p_cbf >= 0
-
             if not CBF_Constraint:
                 return False
         return True
