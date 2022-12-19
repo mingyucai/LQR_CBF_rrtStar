@@ -56,10 +56,10 @@ def lqr(actual_state_x, desired_state_xf, Q, R, A, B, dt):
         # For i = 0, ..., N - 1
         for i in range(N):
             # Calculate the optimal feedback gain K
-            K[i] = -np.linalg.pinv(R + B.T @ P[i + 1] @ B) @ B.T @ P[i + 1] @ A
+            K[i] = np.linalg.pinv(R + B.T @ P[i + 1] @ B) @ B.T @ P[i + 1] @ A
 
-            u[i] = K[i] @ x_error
-
+            u[i] = K[i] @ np.array(x_error)
+            
         # Optimal control input is u_star
         u_star = u[N - 1]
 
@@ -96,7 +96,7 @@ def main():
         trajy.append(actual_state_x[1])
 
         state_error = actual_state_x - desired_state_xf
-        state_error_magnitude = np.linalg.norm(state_error)
+        state_error_magnitude = np.linalg.norm(state_error,ord=2)
         print(f'State Error Magnitude = {state_error_magnitude}')
 
         B = getB(dt)
