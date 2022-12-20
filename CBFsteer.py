@@ -172,15 +172,20 @@ class CBF_RRT:
         u2_ref = np.clip(u2_ref, self.u2_lower_lim, self.u1_upper_lim)
         
         knn_obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
+        minCBF = float('inf')
 
         # check CBF constraint
         for index in knn_obstacle_index:
             h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
 
             lgh = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
-            CBF_Constraint = lgh+self.k_cbf*h**self.p_cbf >= 0
-            if not CBF_Constraint:
-                return False
+            CBF_Constraint = lgh+self.k_cbf*h**self.p_cbf
+            if CBF_Constraint < minCBF:
+                minCBF = CBF_Constraint
+            
+        if minCBF < 0:
+            return False
+
         return True
 
 
