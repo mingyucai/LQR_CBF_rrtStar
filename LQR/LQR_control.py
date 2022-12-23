@@ -18,6 +18,43 @@ def state_space_model(A, state_t_minus_1, B, control_input_t_minus_1):
     return state_estimate_t
 
 def lqr(actual_state_x, desired_state_xf, Q, R, A, B, dt):
+<<<<<<< HEAD
+
+        x_error = actual_state_x - desired_state_xf
+
+        N = 50
+
+        # Create a list of N + 1 elements
+        P = [None] * (N + 1)
+
+        Qf = Q
+
+        # LQR via Dynamic Programming
+        P[N] = Qf
+
+        # For i = N, ..., 1
+        for i in range(N, 0, -1):
+            # Discrete-time Algebraic Riccati equation to calculate the optimal
+            # state cost matrix
+            P[i - 1] = Q + A.T @ P[i] @ A - (A.T @ P[i] @ B) @ np.linalg.pinv(
+                R + B.T @ P[i] @ B) @ (B.T @ P[i] @ A)
+
+            # Create a list of N elements
+        K = [None] * N
+        u = [None] * N
+
+        # For i = 0, ..., N - 1
+        for i in range(N):
+            # Calculate the optimal feedback gain K
+            K[i] = np.linalg.pinv(R + B.T @ P[i + 1] @ B) @ B.T @ P[i + 1] @ A
+
+            u[i] = K[i] @ np.array(x_error)
+            
+        # Optimal control input is u_star
+        u_star = u[N - 1]
+
+        return u_star
+=======
     x_error = actual_state_x - desired_state_xf
     N = 100
     P = [None] * (N + 1)
@@ -37,6 +74,7 @@ def lqr(actual_state_x, desired_state_xf, Q, R, A, B, dt):
         u_unit = u_star / np.linalg.norm(u_star)
         u_star = u_unit * 5.
     return u_star
+>>>>>>> upstream/main
 
 
 
@@ -63,8 +101,14 @@ def main(start, target, verbose=True):
             state_error = actual_state_x - desired_state_xf
             trajectory.append(actual_state_x)
 
+<<<<<<< HEAD
+        state_error = actual_state_x - desired_state_xf
+        state_error_magnitude = np.linalg.norm(state_error,ord=2)
+        print(f'State Error Magnitude = {state_error_magnitude}')
+=======
             trajx.append(actual_state_x[0])
             trajy.append(actual_state_x[1])
+>>>>>>> upstream/main
 
             state_error_magnitude = np.linalg.norm(state_error)
             error.append(state_error_magnitude)
