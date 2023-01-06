@@ -5,6 +5,7 @@ import math
 import numpy as np
 import heapq as hq
 import sys
+import sympy
 
 from numpy import linalg as LA
 from scipy.integrate import solve_ivp
@@ -55,7 +56,7 @@ class CBF_RRT:
         self.T = 0.2  #Integration Length
         self.N = 50 # Number of Control Updates
         self.y0 = initial_state
-        self.k = 3 # k nearest neighbor obstacles that will be used for generating CBF constraint
+        self.k = 5 # k nearest neighbor obstacles that will be used for generating CBF constraint
         self.k_cbf = 1.0 #CBF coefficient
         self.p_cbf = 1 #CBF constraint power
         self.x_obstacle = obstacle_list
@@ -188,8 +189,52 @@ class CBF_RRT:
 
         return True
 
+    def QP_constraint_unicycle(self,x_current,u_ref):
+        x = x_current[0]
+        y = x_current[1]
+        theta = x_current[2]
+        v = x_current[3]
+        u1 = u_ref[0]
+        u2 = u_ref[2]
 
-    def motion_planning_without_QP(self,u_ref):
+        # States: x1, x2, theta, v
+
+        knn_obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
+        minCBF = float('inf')
+
+        for index in knn_obstacle_index:
+            xd = self.obstacle[index][0]
+            yd = self.obstacle[index][1]
+            r = self.obstacle[index][2]
+
+            h = (x-xd)**2+(y-yd)**2-r**2
+            h_dot = v*(2*x - 2*xd)*math.cos(theta) + v*(2*y - 2*yd)*math.sin(theta)
+            h_dot_dot = u1*(-v*(2*x - 2*xd)*math.sin(theta) + v*(2*y - 2*yd)*math.cos(theta)) \
+                        + u2*((2*x - 2*xd)*math.cos(theta) + (2*y - 2*yd)*math.sin(theta)) + 2*v**2*math.sin(theta)**2 \
+                        + 2*v**2*math.cos(theta)**2
+
+            CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
+
+            if CBF_Constraint < minCBF:
+                minCBF = CBF_Constraint
+
+        if minCBF < 0:
+            return False
+
+        return True
+
+
+    def motion_planning_without_QP(self,u_ref,model="linear"):
+        # model == "linear" or model == "unicycle"
+        def unicycle_model(t,y):
+
+            dxdt =
+            dydt =
+            dthetadt =
+            dvdt =
+
+            return np.array([])
+
         x_current = self.y0
         x = np.zeros((2,0))
         u = np.zeros((2,0))
@@ -202,7 +247,15 @@ class CBF_RRT:
                 u = np.hstack((u, u_ref))
                 if not self.QP_constraint(x_current[:,0],u_ref):
                     return (x, u)
-                x_current=x_current+delta_t*u_ref
+
+                if model == "linear":
+                    x_current=x_current+delta_t*u_ref
+
+                if model == "unicycle":
+                    t_span = np.array([0,delta_t])
+                    y0 = np.array([])
+
+
         return (x,u)
 
     def plot_traj(self,x,u):
