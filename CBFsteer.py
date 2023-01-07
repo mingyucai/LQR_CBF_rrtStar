@@ -226,34 +226,50 @@ class CBF_RRT:
 
     def motion_planning_without_QP(self,u_ref,model="linear"):
         # model == "linear" or model == "unicycle"
-        def unicycle_model(t,y):
 
-            dxdt =
-            dydt =
-            dthetadt =
-            dvdt =
-
-            return np.array([])
-
-        x_current = self.y0
-        x = np.zeros((2,0))
-        u = np.zeros((2,0))
-        u_ref = np.array([[u_ref[0]], [u_ref[1]]])
-        delta_t = self.T/self.N
-        time_step = 8
-        for _ in range(time_step):
-            for i in range(0,self.N):
-                x=np.hstack((x,x_current))
-                u = np.hstack((u, u_ref))
-                if not self.QP_constraint(x_current[:,0],u_ref):
-                    return (x, u)
-
-                if model == "linear":
+        if model == "linear":
+            # State: [position_x, position_y]^T, Control:[velocity_x, velocity_y]^T
+            x_current = self.y0
+            x = np.zeros((2,0))
+            u = np.zeros((2,0))
+            u_ref = np.array([[u_ref[0]], [u_ref[1]]])
+            delta_t = self.T/self.N
+            time_step = 8
+            for _ in range(time_step):
+                for i in range(0,self.N):
+                    x=np.hstack((x,x_current))
+                    u = np.hstack((u, u_ref))
+                    if not self.QP_constraint(x_current[:,0],u_ref):
+                        return (x, u)
                     x_current=x_current+delta_t*u_ref
 
-                if model == "unicycle":
-                    t_span = np.array([0,delta_t])
-                    y0 = np.array([])
+        if model == "unicycle":
+            # State: [position_x, position_y, theta, velocity]^T Control: [Angular acceleration, Linear Acceleration ]
+            x_current = self.y0
+            x = np.zeros((4, 0))
+            u = np.zeros((2, 0))
+            self.u_ref = np.array([[u_ref[0]], [u_ref[1]]])
+            delta_t = self.T / self.N
+            def unicycle_model(t, state):
+                # The control generation happens in here, the function acts like a wrapper
+                x = state[0]
+                y = state[1]
+                theta = state[2]
+                v = state[3]
+
+                #Verify CBF constraints
+                
+
+
+                dxdt = v*np.cos(theta)
+                dydt = v*np.sin(theta)
+                dthetadt = u1
+                dvdt = u2
+
+                return np.array([dxdt,dydt,dthetadt,dvdt])
+
+            t_span = np.array([0,delta_t])
+            y0 = np.array([])
 
 
         return (x,u)
