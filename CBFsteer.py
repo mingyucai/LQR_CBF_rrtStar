@@ -56,7 +56,7 @@ class CBF_RRT:
         self.T = 0.2  #Integration Length
         self.N = 50 # Number of Control Updates
         self.y0 = initial_state
-        self.k = 5 # k nearest neighbor obstacles that will be used for generating CBF constraint
+        self.k = 3 # k nearest neighbor obstacles that will be used for generating CBF constraint
         self.k_cbf = 1.0 #CBF coefficient
         self.p_cbf = 1 #CBF constraint power
         self.x_obstacle = obstacle_list
@@ -215,11 +215,13 @@ class CBF_RRT:
 
             CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
 
-            if CBF_Constraint < minCBF:
-                minCBF = CBF_Constraint
+            if CBF_Constraint < 0:
+                return False
+            #if CBF_Constraint < minCBF:
+            #    minCBF = CBF_Constraint
 
-        if minCBF < 0:
-            return False
+        #if minCBF < 0:
+        #    return False
 
         return True
 
@@ -230,49 +232,56 @@ class CBF_RRT:
         if model == "linear":
             # State: [position_x, position_y]^T, Control:[velocity_x, velocity_y]^T
             x_current = self.y0
-            x = np.zeros((2,0))
-            u = np.zeros((2,0))
+            self.x = np.zeros((2,0))
+            self.u = np.zeros((2,0))
             u_ref = np.array([[u_ref[0]], [u_ref[1]]])
             delta_t = self.T/self.N
             time_step = 8
             for _ in range(time_step):
                 for i in range(0,self.N):
-                    x=np.hstack((x,x_current))
-                    u = np.hstack((u, u_ref))
+                    self.x = np.hstack((self.x, x_current))
+                    self.u = np.hstack((self.u, u_ref))
                     if not self.QP_constraint(x_current[:,0],u_ref):
-                        return (x, u)
+                        return (self.x, self.u)
                     x_current=x_current+delta_t*u_ref
 
+            return (self.x,self.u)
+        '''
         if model == "unicycle":
             # State: [position_x, position_y, theta, velocity]^T Control: [Angular acceleration, Linear Acceleration ]
             x_current = self.y0
-            x = np.zeros((4, 0))
-            u = np.zeros((2, 0))
-            self.u_ref = np.array([[u_ref[0]], [u_ref[1]]])
-            delta_t = self.T / self.N
+            self.x = np.zeros((4, 0))
+            self.u = np.zeros((2, 0))
+            self.u_ref = np.array([[self.u_ref[0]], [self.u_ref[1]]])
+
+            def CBF_constraint_checking_event(t, state):
+                x_current = state
+                if self.QP_constraint(x_current[:, 0], self.u_ref):
+                    return False # Continue solve_ivp because the control passes CBF constraints test
+                else:
+                    return True # Terminate solve_ivp because control is unsafe
+
             def unicycle_model(t, state):
-                # The control generation happens in here, the function acts like a wrapper
-                x = state[0]
-                y = state[1]
+                # The safe control is applied here, the function generates safe expanding edge (state trajectory)
                 theta = state[2]
                 v = state[3]
 
-                #Verify CBF constraints
-                
-
-
                 dxdt = v*np.cos(theta)
                 dydt = v*np.sin(theta)
-                dthetadt = u1
-                dvdt = u2
+                dthetadt = self.u_ref[0]
+                dvdt = self.u_ref[1]
 
                 return np.array([dxdt,dydt,dthetadt,dvdt])
 
-            t_span = np.array([0,delta_t])
-            y0 = np.array([])
+            solution = solve_ivp(fun=unicycle_model,t_span=[0,self.T], y0=self.y0, events=CBF_constraint_checking_event)
 
+            x_new_traj = solution.y # Return the state trajectory
 
-        return (x,u)
+            self.x = np.hsatck((self.x, x_new_traj))
+            self.u = np.hstack((self.u, u_ref))
+
+            return (self.x,self.u)
+            '''
 
     def plot_traj(self,x,u):
         #t_span = np.linspace(0,self.T,self.N)
@@ -290,9 +299,9 @@ class CBF_RRT:
         plt.show()
 
 if __name__ == "__main__":
-    initial_state = np.array([[1.0],[1.0]])
-    obstacle_list = [[2.9,2.6,0.5]]
-    u_ref = [0.5,0.5]
+    initial_state = np.array([[1.0], [1.0]])
+    obstacle_list = [[2.9, 2.6, 0.5]]
+    u_ref = [0.5, 0.5]
 
     CBFRRT_Planning = CBF_RRT(initial_state, obstacle_list)
     x, u= CBFRRT_Planning.motion_planning(u_ref)
