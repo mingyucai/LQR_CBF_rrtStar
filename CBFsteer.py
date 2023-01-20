@@ -56,7 +56,8 @@ class CBF_RRT:
         self.T = 0.2  #Integration Length
         self.N = 50 # Number of Control Updates
         self.y0 = initial_state
-        self.k = 3 # k nearest neighbor obstacles that will be used for generating CBF constraint
+        self.k = 6 # k nearest neighbor obstacles that will be used for generating CBF constraint
+        self.cbf_constraints_sensing_radius = 20
         self.k_cbf = 1.0 #CBF coefficient
         self.p_cbf = 1 #CBF constraint power
         self.x_obstacle = obstacle_list
@@ -127,11 +128,6 @@ class CBF_RRT:
             Take in current node's position and obstacles list and integer k
             return k obstacles index based on distance (from close to far)
         '''
-        try:
-            assert k <= len(x_obstacles)
-        except:
-            print("The integer k must be smaller than total number of obstacles!")
-            sys.exit(1)
 
         k_nn_x_obstacles_idx = []
         obstacle_distance_pq = []
@@ -146,6 +142,17 @@ class CBF_RRT:
             k_nn_x_obstacles_idx.append(idx)
         
         return k_nn_x_obstacles_idx
+    
+    def find_obstacles_within_cbf_sensing_range(self, x_current, x_obstacles):
+        obstacles_idx = []
+
+        for i in range(len(x_obstacles)):
+            distance = math.hypot(x_current[0] - x_obstacles[i][0], x_current[1] - x_obstacles[i][1])
+            if distance <= self.cbf_constraints_sensing_radius:
+                obstacles_idx.append(i)
+
+        return obstacles_idx
+
 
     def motion_planning_with_QP(self,u_ref):
         x_current = self.y0
@@ -172,20 +179,24 @@ class CBF_RRT:
         u1_ref = np.clip(u1_ref, self.u1_lower_lim, self.u1_upper_lim)
         u2_ref = np.clip(u2_ref, self.u2_lower_lim, self.u1_upper_lim)
         
-        knn_obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
-        minCBF = float('inf')
+        #obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
 
-        # check CBF constraint
-        for index in knn_obstacle_index:
-            h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
+        obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
 
-            lgh = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
-            CBF_Constraint = lgh+self.k_cbf*h**self.p_cbf
-            if CBF_Constraint < minCBF:
-                minCBF = CBF_Constraint
-            
-        if minCBF < 0:
-            return False
+        if obstacle_index:
+            minCBF = float('inf')
+
+            # check CBF constraint
+            for index in obstacle_index:
+                h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
+
+                lgh = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
+                CBF_Constraint = lgh+self.k_cbf*h**self.p_cbf
+                if CBF_Constraint < minCBF:
+                    minCBF = CBF_Constraint
+
+            if minCBF < 0:
+                return False
 
         return True
 
@@ -217,11 +228,6 @@ class CBF_RRT:
 
             if CBF_Constraint < 0:
                 return False
-            #if CBF_Constraint < minCBF:
-            #    minCBF = CBF_Constraint
-
-        #if minCBF < 0:
-        #    return False
 
         return True
 
