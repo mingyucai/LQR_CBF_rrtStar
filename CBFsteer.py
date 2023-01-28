@@ -23,6 +23,7 @@ class Obstacle_Sphere(object):
         self.N = 50 # Number of Control Updates
         self.center=center
         self.radius=radius
+        
 
     def h(self,x):
         return LA.norm(x-self.center,2)**2-self.radius**2
@@ -65,6 +66,7 @@ class CBF_RRT:
         self.u1_upper_lim = 5
         self.u2_lower_lim = -5
         self.u2_upper_lim = 5
+        self.unicycle_constant_v = 1.0
 
         self.u1_traj = np.zeros(shape=(0,0))
         self.u2_traj = np.zeros(shape=(0,0))
@@ -204,11 +206,9 @@ class CBF_RRT:
         x = x_current[0]
         y = x_current[1]
         theta = x_current[2]
-        v = x_current[3]
-        u1 = u_ref[0]
-        u2 = u_ref[2]
+        v = self.unicycle_constant_v # Constant Control
 
-        # States: x1, x2, theta, v
+        # States: x1, x2, theta
 
         knn_obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
         minCBF = float('inf')
@@ -217,7 +217,9 @@ class CBF_RRT:
             xd = self.obstacle[index][0]
             yd = self.obstacle[index][1]
             r = self.obstacle[index][2]
-
+            
+            '''
+            # Unicycle with accleration control
             h = (x-xd)**2+(y-yd)**2-r**2
             h_dot = v*(2*x - 2*xd)*math.cos(theta) + v*(2*y - 2*yd)*math.sin(theta)
             h_dot_dot = u1*(-v*(2*x - 2*xd)*math.sin(theta) + v*(2*y - 2*yd)*math.cos(theta)) \
@@ -225,6 +227,15 @@ class CBF_RRT:
                         + 2*v**2*math.cos(theta)**2
 
             CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
+
+            if CBF_Constraint < 0:
+                return False
+            '''
+
+            # Unicycle with velocity control
+            h = (x-xd)**2+(y-yd)**2-r**2
+            h_dot = 2*(x-xd)*math.cos(theta)*v + 2*(y-yd)*math.cos(theta)*v
+            CBF_Constraint = h + h_dot
 
             if CBF_Constraint < 0:
                 return False
@@ -252,7 +263,29 @@ class CBF_RRT:
                     x_current=x_current+delta_t*u_ref
 
             return (self.x,self.u)
+        
+        if model == "unicycle":
+            x_current = self.y0
+            self.x = np.zeros((3, 0))
+            self.u = np.zeros((2, 0))
+            self.u_ref = np.array([[self.u_ref[0]], [self.u_ref[1]]])
+            t_span = np.linspace(0,self.T, num=20)
+
+
+            def unicycle_model_velocity_control(t,y_input):
+                return [math.cos(y_input[2])*self.unicycle_constant_v,math.sin(y_input[2])*self.unicycle_constant_v,self.u_ref]
+                
+
+            if not self.QP_constraint_unicycle(x_current[:,0],u_ref):
+                return (self.x, self.u)
+            else:
+                solution = solve_ivp(fun=lambda t,y: unicycle_model_velocity_control(t,y), t_span = [0,self.T], y0=x_current[:,0],dense_output = True)
+                self.x = np.hstack((self.x, [solution[0], solution[1]]))
+                self.u = np.hstack((self.u, solution[2]))
+            
+
         '''
+        Unicycle with accleration controls
         if model == "unicycle":
             # State: [position_x, position_y, theta, velocity]^T Control: [Angular acceleration, Linear Acceleration ]
             x_current = self.y0
