@@ -78,52 +78,77 @@ class CBF_RRT:
         self.h_traj = np.zeros(shape=(0,0))
 
 
-    def QP_controller(self,x_current,u_ref):
-        self.m = Model("CBF_CLF_QP")
-        x1 = x_current[0]
-        x2 = x_current[1]
+    def QP_controller(self,x_current,u_ref, model="linear"):
+        if model == "linear":
+            self.m = Model("CBF_CLF_QP_Linear")
+            x1 = x_current[0]
+            x2 = x_current[1]
 
-        self.m.remove(self.m.getConstrs())
-        u1_ref = u_ref[0]
-        u2_ref = u_ref[1]
-        # Control Acutuator Constraints
-        self.u1 = self.m.addVar(lb=self.u1_lower_lim, ub=self.u1_upper_lim,
-        vtype=GRB.CONTINUOUS, name="velocity_constraint_x1")
-        self.u2 = self.m.addVar(lb=self.u2_lower_lim, ub=self.u2_upper_lim,
-        vtype=GRB.CONTINUOUS, name="velocity_constraint_x2")
+            self.m.remove(self.m.getConstrs())
+            u1_ref = u_ref[0]
+            u2_ref = u_ref[1]
+            # Control Acutuator Constraints
+            self.u1 = self.m.addVar(lb=self.u1_lower_lim, ub=self.u1_upper_lim,
+            vtype=GRB.CONTINUOUS, name="velocity_constraint_x1")
+            self.u2 = self.m.addVar(lb=self.u2_lower_lim, ub=self.u2_upper_lim,
+            vtype=GRB.CONTINUOUS, name="velocity_constraint_x2")
 
-        # Initialize Cost Function
-        self.cost_func = (self.u1-u1_ref)*(self.u1-u1_ref)+(self.u2-u2_ref)*(self.u2-u2_ref)
-        self.m.setObjective(self.cost_func, GRB.MINIMIZE)
+            # Initialize Cost Function
+            self.cost_func = (self.u1-u1_ref)*(self.u1-u1_ref)+(self.u2-u2_ref)*(self.u2-u2_ref)
+            self.m.setObjective(self.cost_func, GRB.MINIMIZE)
 
-        # CBF function
-        for i in range(0,len(self.x_obstacle)):
-            h = (x1-self.x_obstacle[i][0])**2+(x2-self.x_obstacle[i][1])**2-self.x_obstacle[i][2]**2
+            # CBF function
+            for i in range(0,len(self.x_obstacle)):
+                h = (x1-self.x_obstacle[i][0])**2+(x2-self.x_obstacle[i][1])**2-self.x_obstacle[i][2]**2
 
-            lgh = 2*(x1-self.x_obstacle[i][0])*self.u1+2*(x2-self.x_obstacle[i][1])*self.u2
+                lgh = 2*(x1-self.x_obstacle[i][0])*self.u1+2*(x2-self.x_obstacle[i][1])*self.u2
 
-            self.m.addConstr((lgh+self.k_cbf*h**self.p_cbf)>=0)
+                self.m.addConstr((lgh+self.k_cbf*h**self.p_cbf)>=0)
 
 
-        #Stop optimizer from publsihing results to console - remove if desired
-        self.m.Params.LogToConsole = 0
+            #Stop optimizer from publsihing results to console - remove if desired
+            self.m.Params.LogToConsole = 0
 
-        #Solve the optimization problem
-        self.m.optimize()
-        self.solution = self.m.getVars()
-        #self.m.write("Safe_RRT_Forward.lp")
+            #Solve the optimization problem
+            self.m.optimize()
+            self.solution = self.m.getVars()
+            #self.m.write("Safe_RRT_Forward.lp")
 
-        # get the results of decision variables
-        u1 = self.solution[0].x
-        u2 = self.solution[1].x
-        '''
-        h_temp = (x1-self.x_obstacle[i][0])**2+(x2-self.x_obstacle[i][1])**2-self.x_obstacle[i][2]**2
-        lgh_temp = 2*(x1-self.x_obstacle[i][0])*u1+2*(x2-self.x_obstacle[i][1])*u2
-        self.cbf_traj = np.append(self.cbf_traj,(lgh_temp+self.k_cbf*h_temp**self.p_cbf))
-        self.hdot_traj = np.append(self.hdot_traj,(lgh_temp))
-        self.h_traj = np.append(self.h_traj,(self.k_cbf*h_temp**1))
-        '''
-        return np.array([[u1],[u2]])
+            # get the results of decision variables
+            u1 = self.solution[0].x
+            u2 = self.solution[1].x
+            return np.array([[u1],[u2]])
+        
+        if model == "unicycle":
+            self.m = Model("CBF_CLF_QP_Unicycle")
+            x1 = x_current[0]
+            x2 = x_current[1]
+            theta = x_current[2]
+
+            v = 1.0 # Set constant linear velcoity to avoid mixed relative degree control
+
+            self.m.remove(self.m.getConstrs())
+            #Control angular velocity
+            self.w = self.m.addVar(lb=self.w_lower_lim, ub=self.w_upper_lim,vtype=GRB.CONTINUOUS, name="Control_Angular_Velocity")
+
+            # Initialize Cost Function, minimize distanc to u_ref
+            self.cost_func = (self.w-u_ref)*(self.w-u_ref)
+            self.m.setObjective(self.cost_func, GRB.MINIMIZE)
+
+            # CBF Constraint for h(x) = (x1 + x_{obs,1})^2 + (x2 + x_{obs,2})^2 - r^2>= 0
+            for i in range(0,len(self.x_obstacle)):
+                h = (x1-self.x_obstacle[i][0])**2+(x2-self.x_obstacle[i][1])**2-self.x_obstacle[i][2]*self.x_obstacle[i][2]
+
+                lfh =2*(x1-self.x_obstacle[i][0])*v*np.cos(theta) + 2*(x2-self.x_obstacle[i][1])*v*np.sin(theta)
+
+                self.m.addConstr(2*x1*v*np.cos(theta)*v*np.cos(theta) + 2*x2*v*np.sin(theta)*v*np.sin(theta)+(2*v*(x2-self.x_obstacle[i][1])*np.cos(theta)-2*v*(x1-self.x_obstacle[i][0])*np.sin(theta))*self.w+self.k_cbf_1*h+self.k_cbf_2*lfh >= 0,"CBF_constraint")
+
+            #Solve the optimization problem
+            self.m.optimize()
+            self.solution = self.m.getVars()
+            u = self.solution[0].x
+
+            return np.array([u])
 
     def find_knn_obstacle(self, x_current, x_obstacles,k):
         '''
