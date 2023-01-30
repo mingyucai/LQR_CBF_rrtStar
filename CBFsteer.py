@@ -66,7 +66,10 @@ class CBF_RRT:
         self.u1_upper_lim = 5
         self.u2_lower_lim = -5
         self.u2_upper_lim = 5
+        self.w_lower_lim = -5
+        self.w_upper_lim = 5
         self.unicycle_constant_v = 1.0
+        self.unicycle_gamma = 0.5
 
         self.u1_traj = np.zeros(shape=(0,0))
         self.u2_traj = np.zeros(shape=(0,0))
@@ -77,6 +80,43 @@ class CBF_RRT:
         self.hdot_traj = np.zeros(shape=(0,0))
         self.h_traj = np.zeros(shape=(0,0))
 
+    def CLF_unicycle_QP(self,x_current, x_goal):
+        # CLF QP for unicycle model with angular velocity as control
+        x = x_current[0]
+        y = x_current[1]
+        theta = x_current[2]
+
+        xd = x_goal[0]
+        yd = x_goal[1]
+
+        self.m = Model("Unicycle_CLF_QP")
+        self.m.remove(self.m.getConstrs())
+
+        V = (math.cos(theta)*(y-yd)-math.sin(theta)*(x-xd))**2
+        LgV = -2*(math.cos(theta)*(x-xd)+math.sin(theta)*(y-yd))*(math.cos(theta)*(y-yd)-math.sin(theta)*(x-xd))
+
+        self.w = self.m.addVar(lb=self.w_lower_lim, ub=self.w_upper_lim,
+            vtype=GRB.CONTINUOUS, name="Angular velocity Constraint")
+        
+        # Slack variable
+        self.delta = self.m.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY,
+            vtype=GRB.CONTINUOUS, name="Slack Variable")
+        
+        # Initialize Cost Function
+        self.cost_func = self.w*self.w+self.delta*self.delta
+        self.m.setObjective(self.cost_func, GRB.MINIMIZE)
+
+        self.m.addConstr((-LgV-self.unicycle_gamma*V+self.delta)>=0)
+
+         #Stop optimizer from publsihing results to console - remove if desired
+        self.m.Params.LogToConsole = 0
+
+        #Solve the optimization problem
+        self.m.optimize()
+        u_ref = self.m.getVars()
+
+        return u_ref
+        
 
     def QP_controller(self,x_current,u_ref, model="linear"):
         if model == "linear":
@@ -120,12 +160,13 @@ class CBF_RRT:
             return np.array([[u1],[u2]])
         
         if model == "unicycle":
+            # TO DO : Make sure if we want Lyapunov function
             self.m = Model("CBF_CLF_QP_Unicycle")
             x1 = x_current[0]
             x2 = x_current[1]
             theta = x_current[2]
 
-            v = 1.0 # Set constant linear velcoity to avoid mixed relative degree control
+            v = self.unicycle_constant_v # Set constant linear velcoity to avoid mixed relative degree control
 
             self.m.remove(self.m.getConstrs())
             #Control angular velocity
