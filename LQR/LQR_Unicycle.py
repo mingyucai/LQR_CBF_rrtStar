@@ -28,13 +28,16 @@ K = dlqr(A,B,Q,R)
 
 nsteps = 250
 time = np.linspace(0, 2, nsteps, endpoint=True)
-xk = np.matrix("5 ; 20") # desired state (0, 0)
+xk = np.matrix("5 ; 20")
+xd = xd = np.matrix("1; 5")
 
 X = []
 Y = []
-
+T = []
+U = []
 for t in time:
-    uk = K*xk
+    xe = xk - xd
+    uk = K*xe
     X.append(xk[0, 0])
     Y.append(xk[1, 0])
 
