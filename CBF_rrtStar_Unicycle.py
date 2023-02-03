@@ -64,6 +64,7 @@ class Rrt:
                 try:
                     cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x],[node_near.y]]), self.obs_circle, model="unicycle")
                     x_simulated, u_simulated= cbf_rrt_simulation.motion_planning_with_QP(u_ref, model="unicycle")
+                    
                     print('try', x_simulated)
                     feasible = True
                     node_new.x = x_simulated[0][-1]

@@ -353,13 +353,13 @@ class CBF_RRT:
                 return [math.cos(y_input[2])*self.unicycle_constant_v,math.sin(y_input[2])*self.unicycle_constant_v,u_ref]
             
             
-            
             if not self.QP_constraint_unicycle(x_current[:,0],u_ref):
+                self.x = np.hstack((self.x, x_current))
+                self.u = np.append(self.u, u_ref)
                 return (self.x, self.u)
             else:
                 solution = solve_ivp(fun=lambda t,y: unicycle_model_velocity_control(t,y), t_span = [0,self.T], y0=x_current[:,0],dense_output = True)
-                
-                self.x = np.hstack((self.x, np.array(solution.y)))
+                self.x = np.hstack((self.x, np.array([solution.y[0],solution.y[1],solution.y[2]])))
                 self.u = np.append(self.u, u_ref)
             
             return (self.x, self.u)
