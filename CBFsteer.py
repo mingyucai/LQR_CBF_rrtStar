@@ -59,8 +59,11 @@ class CBF_RRT:
         self.y0 = initial_state
         self.k = 6 # k nearest neighbor obstacles that will be used for generating CBF constraint
         self.cbf_constraints_sensing_radius = 20
-        self.k_cbf = 1.0 #CBF coefficient
+        self.k_cbf = 1.0 #CBF coefficient for double intergrators
         self.p_cbf = 1 #CBF constraint power
+        self.k1_unicyle_cbf = 2.0 # CBF coefficient for unicycle
+        self.k2_unicyle_cbf = 2.0 # CBF coefficient for unicycle
+
         self.x_obstacle = obstacle_list
         self.u1_lower_lim = -5
         self.u1_upper_lim = 5
@@ -89,6 +92,7 @@ class CBF_RRT:
         xd = x_goal[0]
         yd = x_goal[1]
 
+
         self.m = Model("Unicycle_CLF_QP")
         self.m.remove(self.m.getConstrs())
 
@@ -106,14 +110,15 @@ class CBF_RRT:
         self.cost_func = self.w*self.w+self.delta*self.delta
         self.m.setObjective(self.cost_func, GRB.MINIMIZE)
 
-        self.m.addConstr((-LgV-self.unicycle_gamma*V+self.delta)>=0)
+        self.m.addConstr((-LgV*self.w-self.unicycle_gamma*V+self.delta)>=0)
 
          #Stop optimizer from publsihing results to console - remove if desired
         self.m.Params.LogToConsole = 0
 
         #Solve the optimization problem
         self.m.optimize()
-        u_ref = self.m.getVars()
+        solution = self.m.getVars()
+        u_ref = solution[0].x
 
         return u_ref
         
@@ -162,8 +167,8 @@ class CBF_RRT:
         if model == "unicycle":
             # TO DO : Make sure if we want Lyapunov function
             self.m = Model("CBF_CLF_QP_Unicycle")
-            x1 = x_current[0]
-            x2 = x_current[1]
+            x = x_current[0]
+            y = x_current[1]
             theta = x_current[2]
 
             v = self.unicycle_constant_v # Set constant linear velcoity to avoid mixed relative degree control
@@ -178,11 +183,16 @@ class CBF_RRT:
 
             # CBF Constraint for h(x) = (x1 + x_{obs,1})^2 + (x2 + x_{obs,2})^2 - r^2>= 0
             for i in range(0,len(self.x_obstacle)):
-                h = (x1-self.x_obstacle[i][0])**2+(x2-self.x_obstacle[i][1])**2-self.x_obstacle[i][2]*self.x_obstacle[i][2]
+                xo = self.x_obstacle[i][0]
+                yo = self.x_obstacle[i][1]
+                r = self.x_obstacle[i][2]
 
-                lfh =2*(x1-self.x_obstacle[i][0])*v*np.cos(theta) + 2*(x2-self.x_obstacle[i][1])*v*np.sin(theta)
+                h = (x-xo)**2+(y-yo)**2-r**2
+                Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
+                LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
+                LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
 
-                self.m.addConstr(2*x1*v*np.cos(theta)*v*np.cos(theta) + 2*x2*v*np.sin(theta)*v*np.sin(theta)+(2*v*(x2-self.x_obstacle[i][1])*np.cos(theta)-2*v*(x1-self.x_obstacle[i][0])*np.sin(theta))*self.w+self.k_cbf_1*h+self.k_cbf_2*lfh >= 0,"CBF_constraint")
+                self.m.addConstr(LfLfh+LgLfh*self.w+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh>=0,"CBF_constraint")
 
             #Solve the optimization problem
             self.m.optimize()
@@ -276,13 +286,13 @@ class CBF_RRT:
 
         # States: x1, x2, theta
 
-        knn_obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
+        obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
         minCBF = float('inf')
 
-        for index in knn_obstacle_index:
-            xd = self.obstacle[index][0]
-            yd = self.obstacle[index][1]
-            r = self.obstacle[index][2]
+        for index in obstacle_index:
+            xo = self.x_obstacle[index][0]
+            yo = self.x_obstacle[index][1]
+            r = self.x_obstacle[index][2]
             
             '''
             # Unicycle with accleration control
@@ -299,11 +309,14 @@ class CBF_RRT:
             '''
 
             # Unicycle with velocity control
-            h = (x-xd)**2+(y-yd)**2-r**2
-            h_dot = 2*(x-xd)*math.cos(theta)*v + 2*(y-yd)*math.cos(theta)*v
-            CBF_Constraint = h + h_dot
+            h = (x-xo)**2+(y-yo)**2-r**2
+            Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
+            LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
+            LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
+            
+            cbf = LfLfh+LgLfh*u_ref+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh
 
-            if CBF_Constraint < 0:
+            if cbf < 0:
                 return False
 
         return True
@@ -333,21 +346,23 @@ class CBF_RRT:
         if model == "unicycle":
             x_current = self.y0
             self.x = np.zeros((3, 0))
-            self.u = np.zeros((2, 0))
-            self.u_ref = np.array([[self.u_ref[0]], [self.u_ref[1]]])
-            t_span = np.linspace(0,self.T, num=20)
-
+            self.u = np.zeros((1, 0))
+            u_ref = np.array(u_ref)
 
             def unicycle_model_velocity_control(t,y_input):
-                return [math.cos(y_input[2])*self.unicycle_constant_v,math.sin(y_input[2])*self.unicycle_constant_v,self.u_ref]
-                
-
+                return [math.cos(y_input[2])*self.unicycle_constant_v,math.sin(y_input[2])*self.unicycle_constant_v,u_ref]
+            
+            
+            
             if not self.QP_constraint_unicycle(x_current[:,0],u_ref):
                 return (self.x, self.u)
             else:
                 solution = solve_ivp(fun=lambda t,y: unicycle_model_velocity_control(t,y), t_span = [0,self.T], y0=x_current[:,0],dense_output = True)
-                self.x = np.hstack((self.x, [solution[0], solution[1]]))
-                self.u = np.hstack((self.u, solution[2]))
+                
+                self.x = np.hstack((self.x, np.array(solution.y)))
+                self.u = np.append(self.u, u_ref)
+            
+            return (self.x, self.u)
             
 
         '''
