@@ -2,6 +2,10 @@ import os
 import sys
 import math
 import numpy as np
+import time
+import timeit
+import matplotlib.pyplot as plt
+from sklearn.neighbors import KernelDensity
 
 import env, plotting, utils, queue
 
@@ -18,11 +22,12 @@ class Node:
         self.y = n[1]
         self.parent = None
         self.cost = 0
+        self.StateTraj = None
 
 
 class LQRrrtStar:
     def __init__(self, x_start, x_goal, step_len,
-                 goal_sample_rate, search_radius, iter_max):
+                 goal_sample_rate, search_radius, iter_max,AdSamplingFlag = False):
         self.s_start = Node(x_start)
         self.s_goal = Node(x_goal)
         self.step_len = step_len
@@ -43,6 +48,33 @@ class LQRrrtStar:
         self.obs_boundary = self.env.obs_boundary
 
         self.lqr_planner = LQRPlanner()
+        #Adaptive Sampling attributes: 
+        # Adaptive sampling attributes 
+        # -----------------------------
+        self.Vg_leaves = []
+        self.AdSamplingFlag = AdSamplingFlag
+        self.adapIter = 1
+        self.kde_preSamples = []
+        self.kde_currSamples =[]
+        self.initEliteSamples = []
+        self.curr_Ldist = 0
+        self.prev_Ldist = 0
+        #Reaching the optimal distribution params:
+        #---kde
+        self.kdeOpt_flag = False
+        self.kde_eliteSamples = []
+        self.KDE_fitSamples = None
+        self.KDE_pre_gridProbs = None
+        self.kde_enabled = True
+        #Elite samples and CE computation att
+        self.len_frakX = 0
+        self.pre_gridProbs = []
+        self.SDF_optFlg = False
+        self.N_qSamples = 200 
+        self.rho = .1
+        self.step_size = 0.3
+        self.plot_pdf_kde = False
+
 
     def planning(self):
         for k in range(self.iter_max):
@@ -62,6 +94,19 @@ class LQRrrtStar:
                     self.LQR_choose_parent(node_new, neighbor_index)
                     self.rewire(node_new, neighbor_index)
 
+            # >>> Extend to the goal 
+            if self.AdSamplingFlag: 
+                # Steering to the goal region: 
+                g_node = self.LQR_steer(node_new, self.s_goal)
+                self.Vg_leaves.append(g_node)
+                # theta_goal = math.atan2(self.s_goal.y - node_new.y, self.s_goal.x - node_new.x)
+                # u_g_ref_nom = np.sqrt((self.s_goal.y - node_new.y)**2 + (self.s_goal.x - node_new.x)**2)
+                # u_g_ref = [node_new.x + u_g_ref_nom * math.cos(theta_goal),node_new.y + u_g_ref_nom * math.sin(theta_goal)]
+                
+                # # Assuming that all extensions to be collision free, i.e. add the node at the goal anyway: 
+                # g_node = Node((u_g_ref[0],u_g_ref[1]))
+                # g_node.parent = node_new
+            # <<< End extend to the goal
         index = self.search_goal_parent()
 
         if index is None:
@@ -101,7 +146,7 @@ class LQRrrtStar:
         node_new.parent = node_start
         # calculate cost of each new_node
         node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost)
-
+        node_new.StateTraj = np.array([px,py])
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal):
@@ -161,14 +206,178 @@ class LQRrrtStar:
         return len(self.vertex) - 1
 
 
-    def generate_random_node(self, goal_sample_rate):
+    # Beginning of sampling/adaptive sampling: 
+    def generate_random_node(self, goal_sample_rate,rce = 0.5,md = 8):
         delta = self.utils.delta
+        adap_flag=self.AdSamplingFlag
 
-        if np.random.random() > goal_sample_rate:
+        u_rand = np.random.uniform(0, 1)
+        Vg_leaves = self.Vg_leaves
+        if not adap_flag or (u_rand > rce and len(Vg_leaves)==0): # Uniform sampling form the workspace: 
+            if np.random.random() > goal_sample_rate:
+                return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
+                            np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
+            return self.s_goal
+        # adapt the sampling distribution: 
+        elif len(Vg_leaves) != 0 and not self.SDF_optFlg:
+            N_xSmpls = 200 
+            # t_min = min([vg.curTime for vg in Vg_leaves]) # The fastest trajectory 
+            # h = t_min/md 
+            h = .5
+            return self.CE_Sample(Vg_leaves,h,self.N_qSamples)
+        elif self.SDF_optFlg: # Sampling from the optimal SDF: 
+            xySmpl = self.OptSDF.sample()
+            return Node(xySmpl[0][0],xySmpl[0][1])
+        else: 
+            if np.random.random() > goal_sample_rate:
+                return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
+                            np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
+            return self.s_goal
+
+
+    def CE_Sample(self,Vg_leaves,h,N_qSamples):
+        """
+        Exploit the samples of trajectories that reach the goal to adapt the sampling distribution towards the distribution of the rare event.
+        The trajectories that reach the goal will be disceretized to extract the elite samples that will be used to adapt (optimize)
+        the sampling distribution.
+
+        :param Vg_leaves:
+        :param h: The time step to discretize the trajectories
+        :param N_qSamples: A threshold indicates the number of samples that are sufficient enough to be exploited (TODO (Doc): How to decide this number)
+        :return: None: if the number of points of the discretized trajectories < N_qSamples, (x,y) samples from the estimated distribution
+        """
+        if len(Vg_leaves)>=(self.adapIter*30): #The acceptable number of trajectories to adapat upon
+            frakX = []
+            #Find the elite trajectoies then discretize them and use their samples as the elite samples:
+            Vg_leaves_costList = [vg.cost for vg in Vg_leaves]
+            if (self.adapIter + 3) > 5: 
+                d_factor = 15
+            elif self.adapIter > 2:
+                d_factor = self.adapIter + 3
+            else: 
+                d_factor = self.adapIter
+            q = self.rho/d_factor               # The rho^th quantile  
+            cost_rhoth_q = np.quantile(Vg_leaves_costList, q=q)
+            elite_Vg_leaves = [vg for vg in Vg_leaves if vg.cost <= cost_rhoth_q]
+            if len(elite_Vg_leaves) == 0:
+                elite_Vg_leaves = Vg_leaves
+
+            #XXXXXXX
+            for vg in elite_Vg_leaves:
+                vgcost2come = vg.cost
+                #Concatnating the trajectory:
+                traj2vg = np.asarray(vg.StateTraj).T
+                node = vg
+                while node.parent is not None:
+                    node = node.parent
+                    if node.cost != 0:
+                        ParentTraj = node.StateTraj.T
+                        traj2vg = np.concatenate((ParentTraj,traj2vg),axis=0)
+                # Backtrack the path from vg to v0; extract the sample at certain increments of the time:
+                tStep_init1 = int(h/self.step_size)
+                tStep_init = 2
+                tStep = 10
+                tStep_temp = tStep_init1+3
+                while tStep < len(traj2vg[:,1]):
+                    pi_q_tStep = traj2vg[tStep,:]
+                    elite_cddtSample = [pi_q_tStep,vgcost2come] #This tuple contains the actual sample pi_q_tStep and the CostToCome to the goal of the corresponding trajectory
+                    frakX.append(elite_cddtSample)
+                    tStep = tStep + tStep_temp
+            if self.adapIter == 1:
+                frakX.extend(self.initEliteSamples)
+            # XXXXXXX
+            self.len_frakX = len(frakX)
+            if len(frakX) == 0:
+                ok = 1
+            x,y = self.CE_KDE_Sampling(frakX)
+        else:
+                x = None
+                y = None
+        if x is None or y is None: 
+            delta = self.utils.delta
             return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
-                         np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
+                            np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
+        else: 
+            return Node((x,y))
+    #Density estimate, kernel density or GMM:
+    def CE_KDE_Sampling(self,frakX):
+        """
+        Fit the elite samples to Kernel density estimate (KDE) or a GMM to generate from; and generate an (x,y) sample from the estimated
+        distribution. Checks if the CE between the previous density estimate and the current one below some threshold. In the case
+        of KDE the expectation similarity measure could be used instead on the CE.
 
-        return self.s_goal
+        NOTE to Ahmad:
+        You're using the CE with the KDE because you have the logistic probes of the samples and you use them; however, for
+        Kernel based distributions the expectation similarity could be used as well. One might reformulate the CE framework
+        in terms of nonparametric distributions.
+
+        :param frakX: The elite set of samples with the corresponding trajectory cost.
+        :return:
+        """
+        frakXarr = np.array(frakX)
+        N_samples = len(frakX)
+        if len(frakXarr.shape) !=2:
+            ok =1
+        costs_arr = frakXarr[:,1]
+        elite_samplesTemp = frakXarr[:,0] #A subset of the samples that are below the elite quantile
+        elite_samples = [elite_samplesTemp[i] for i in range(len(elite_samplesTemp))]
+        elite_samples_arr = np.asarray(elite_samples)
+        elite_costs = costs_arr
+
+        #random point from the estimated distribution:
+        if self.kde_enabled:#self.params.kde_enabled:
+            #Compute the weight of each elite sample as
+            # wSmpl =  1-(cost of the corresponding trajectory of the sample (cost_crsTrajSmpl)/sum(cost_crsTrajSmpl));
+            # this weight is the probability of the Sampling Importance Resampling (SIR) of the non-parametric generlized
+            # CE method. See Chapter X in the Thesis.
+
+            # sumCost_crsTrajSmpl = sum(elite_costs)
+            # w_arr = 1 - elite_costs/sumCost_crsTrajSmpl
+            # w_arrNorm = w_arr/sum(w_arr)
+            kde = KernelDensity(kernel='gaussian', bandwidth=.85)
+            # kde.fit(elite_samples_arr,sample_weight=w_arrNorm)
+            kde.fit(elite_samples_arr)
+            self.adapIter += 1
+            xySample = kde.sample()
+
+        if self.kde_enabled:#self.params.kde_enabled:
+            x_gridv = np.linspace(-2, 18, 40)
+            y_gridv = np.linspace(-2, 18, 40)
+            Xxgrid, Xygrid = np.meshgrid(x_gridv, y_gridv)
+            XYgrid_mtx = np.array([Xxgrid.ravel(), Xygrid.ravel()]).T
+            #Get the probabilities
+            grid_probs = np.exp(kde.score_samples(XYgrid_mtx))
+
+            # Find the KL divergence the current samples and the previous ones:
+            if self.adapIter > 2:
+                KL_div = self.KLdiv(grid_probs)
+                if KL_div < .1:
+                    self.kdeOpt_flag = True
+                    
+                self.KDE_fitSamples = kde #This kde object will be used to sample form whn the optimal sampling distribution has been reached
+
+            self.KDE_pre_gridProbs = grid_probs
+            #Save the grid points with the corresponding probs, the cost, and the tree to plot them afterwards:
+            # saveData(self.goal_costToCome_list, 'adapCBF_RRTstr_Cost', suffix=self.suffix, CBF_RRT_strr_obj=self,
+            #          adapDist_iter=self.adapIter-1, enFlag=False)
+
+            # saveData([self.TreeT,self.vg_minCostToCome_list], 'adapCBF_RRTstr_Tree_CDC', suffix=self.suffix, CBF_RRT_strr_obj=self,
+            #          adapDist_iter=self.adapIter - 1, enFlag=False)
+            # saveData([Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape),elite_samples_arr], 'adapCBF_RRTstr_KDEgridProbs_CDC',
+            #          suffix=self.suffix, CBF_RRT_strr_obj=self,
+            #          adapDist_iter=self.adapIter - 1, enFlag=False)
+
+            #Plot the distribution
+            if self.plot_pdf_kde:
+                # self.initialize_graphPlot()
+                CS = plt.contour(Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape))  # , norm=LogNorm(vmin=4.18, vmax=267.1))
+                # plt.colorbar(CS, shrink=0.8, extend='both')
+                plt.scatter(elite_samples_arr[:, 0], elite_samples_arr[:, 1])
+                plt.show()
+
+        return xySample[0][0],xySample[0][1]
+
+    # End of Adaptive sampling 
 
     def find_near_neighbor(self, node_new):
         n = len(self.vertex) + 1
@@ -207,7 +416,7 @@ def main():
     x_start = (18, 8)  # Starting node
     x_goal = (37, 18)  # Goal node
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 6000)
+    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 6000,AdSamplingFlag=False)
     rrt_star.planning()
 
 
