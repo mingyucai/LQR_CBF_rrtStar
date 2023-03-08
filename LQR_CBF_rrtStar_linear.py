@@ -7,6 +7,7 @@ import env, plotting, utils, Queue
 
 from LQR_planning import LQRPlanner
 
+import copy
 import time
 
 """
@@ -82,7 +83,6 @@ class LQRrrtStar:
 
         self.path = self.extract_path(self.vertex[index])
 
-        print("path ", self.path)
 
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
 
@@ -161,7 +161,6 @@ class LQRrrtStar:
 
 
     def search_goal_parent(self):
-        print('goal ', self.s_goal.x, self.s_goal.y)
         dist_list = [math.hypot(n.x - self.s_goal.x, n.y - self.s_goal.y) for n in self.vertex]
         node_index = [i for i in range(len(dist_list)) if dist_list[i] <= self.goal_len]
 
@@ -171,9 +170,6 @@ class LQRrrtStar:
         if len(node_index) > 0:
             cost_list = [dist_list[i] + self.vertex[i].cost for i in node_index
                          if not self.utils.is_collision(self.vertex[i], self.s_goal)]
-            print('found destination ', node_index[int(np.argmin(cost_list))])
-            print('minimum vetex dis to goal ', min(cost_list))
-            print("min distance", min(dist_list))
             return node_index[int(np.argmin(cost_list))]
 
         return len(self.vertex) - 1
@@ -186,7 +182,7 @@ class LQRrrtStar:
             return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
                          np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
 
-        return self.s_goal
+        return copy.deepcopy(self.s_goal)
 
     def find_near_neighbor(self, node_new):
         n = len(self.vertex) + 1
@@ -205,7 +201,6 @@ class LQRrrtStar:
 
     def extract_path(self, node_end):
         path = [[self.s_goal.x, self.s_goal.y]]
-        print('initial path', path)
         node = node_end
 
         while node.parent is not None:

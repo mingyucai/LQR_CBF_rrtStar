@@ -21,6 +21,7 @@ class Plotting:
         self.plot_grid(name)
         self.plot_visited(nodelist, animation)
         self.plot_path(path)
+        plt.savefig("LQR-CBF_result.PNG")
 
     def animation_online(self, nodelist, name, animation=False):
         self.plot_grid(name)

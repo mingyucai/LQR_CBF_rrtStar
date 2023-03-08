@@ -9,6 +9,8 @@ from LQR_control import LQRPlanner
 
 import time
 
+import copy
+
 """
 RRT_star 2D
 @author: mingyu cai
@@ -177,7 +179,7 @@ class LQRrrtStar:
             return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
                          np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
 
-        return self.s_goal
+        return copy.deepcopy(self.s_goal)
 
     def find_near_neighbor(self, node_new):
         n = len(self.vertex) + 1
