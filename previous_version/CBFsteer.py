@@ -50,10 +50,11 @@ def fun_derivative_trajectory(x,dx,f,gradf):
     plt.show()
 
 class CBF_RRT:
-    def __init__(self, obstacle_list):
+    def __init__(self, initial_state, obstacle_list):
         self.t0 = 0 # Starting time
         self.T = 0.2  #Integration Length
         self.N = 50 # Number of Control Updates
+        self.y0 = initial_state
         self.k = 3 # k nearest neighbor obstacles that will be used for generating CBF constraint
         self.k_cbf = 1.0 #CBF coefficient
         self.p_cbf = 1 #CBF constraint power
@@ -71,10 +72,7 @@ class CBF_RRT:
         self.cbf_traj = np.zeros(shape=(0,0))
         self.hdot_traj = np.zeros(shape=(0,0))
         self.h_traj = np.zeros(shape=(0,0))
-    
-    def set_initial_state(self, initial_state):
-        self.y0 = initial_state
-        
+
 
     def QP_controller(self,x_current,u_ref):
         self.m = Model("CBF_CLF_QP")
@@ -205,7 +203,6 @@ class CBF_RRT:
                 if not self.QP_constraint(x_current[:,0],u_ref):
                     return (x, u)
                 x_current=x_current+delta_t*u_ref
-
         return (x,u)
 
     def plot_traj(self,x,u):

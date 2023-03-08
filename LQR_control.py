@@ -7,7 +7,6 @@ import numpy as np
 import scipy
 from CBFsteer import CBF_RRT
 import time
-import env, plotting, utils
 
 SHOW_ANIMATION = False
 
@@ -21,22 +20,16 @@ class LQRPlanner:
         self.MAX_ITER = 150
         self.EPS = 0.01
 
+        # control limitation
+        self.u_lower_lim = -5
+        self.u_upper_lim = 5
+
          # Linear system model
         self.A, self.B = self.get_system_model()
         # LQR gain is invariant
         self.K = self.lqr_control(self.A, self.B)
 
-        # initialize CBF
-        self.env = env.Env()
-        self.obs_circle = self.env.obs_circle
-        self.obs_rectangle = self.env.obs_rectangle
-        self.obs_boundary = self.env.obs_boundary
-
-        self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
-
     def lqr_planning(self, sx, sy, gx, gy, show_animation=True):
-
-        self.cbf_rrt_simulation.set_initial_state(np.array([[sx],[sy]]))
 
         rx, ry = [sx], [sy]
 
@@ -53,10 +46,7 @@ class LQRPlanner:
 
             u = self.K @ x
 
-            # check if LQR control is safe with respect to CBF constraint
-            if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy],u):
-                break
-
+            u = np.clip(u, self.u_lower_lim, self.u_upper_lim)
 
             x = self.A @ x + self.B @ u
 
@@ -84,7 +74,7 @@ class LQRPlanner:
                 plt.pause(1.0)
 
         if not found_path:
-            #print("Cannot found path")
+            print("Cannot found path")
             return rx, ry, error,found_path
 
         return rx, ry, error,found_path
