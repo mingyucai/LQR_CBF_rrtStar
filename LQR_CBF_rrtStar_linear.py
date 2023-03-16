@@ -27,7 +27,7 @@ class Node:
 
 class LQRrrtStar:
     def __init__(self, x_start, x_goal, step_len,
-                 goal_sample_rate, search_radius, iter_max):
+                 goal_sample_rate, search_radius, iter_max,AdSamplingFlag = False):
         self.s_start = Node(x_start)
         self.s_goal = Node(x_goal)
         self.step_len = step_len
@@ -50,6 +50,31 @@ class LQRrrtStar:
 
         self.lqr_planner = LQRPlanner()
 
+        # The adaptive sampling attributes: 
+        self.Vg_leaves = []
+        self.AdSamplingFlag = AdSamplingFlag
+        self.adapIter = 1
+        self.kde_preSamples = []
+        self.kde_currSamples =[]
+        self.initEliteSamples = []
+        self.curr_Ldist = 0
+        self.prev_Ldist = 0
+        #Reaching the optimal distribution params:
+        #---kde
+        self.kdeOpt_flag = False
+        self.kde_eliteSamples = []
+        self.KDE_fitSamples = None
+        self.KDE_pre_gridProbs = None
+        self.kde_enabled = True
+        #Elite samples and CE computation att
+        self.len_frakX = 0
+        self.pre_gridProbs = []
+        self.SDF_optFlg = False
+        self.N_qSamples = 200 
+        self.rho = .1
+        self.step_size = 0.3
+        self.plot_pdf_kde = False
+        
     def planning(self):
         start_time = time.time()
         for k in range(self.iter_max):
