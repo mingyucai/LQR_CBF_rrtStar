@@ -39,7 +39,7 @@ class Rrt:
         self.obs_rectangle = self.env.obs_rectangle
         self.obs_boundary = self.env.obs_boundary
         self.u_ref_nominal = 2.
-        self.sovle_QP =QP
+        self.sovle_QP = False
 
     def planning(self):
         for i in range(self.iter_max):
@@ -54,7 +54,7 @@ class Rrt:
                 cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x], [node_near.y],[node_near.theta]]), self.obs_circle)
                 #CLF QP to compute reference control (w) to converge to new node
                 u_ref = cbf_rrt_simulation.CLF_unicycle_QP([node_near.x, node_near.y, node_near.theta],[node_new.x,node_new.y,0])
-                x_simulated, u_simulated = cbf_rrt_simulation.motion_planning_without_QP(u_ref, model="unicycle")
+                x_simulated, u_simulated = cbf_rrt_simulation.motion_planning_without_QP(u_ref, model="unicycle_velocity_control")
                 feasible = True
                 node_new.x = x_simulated[0][-1]
                 node_new.y = x_simulated[1][-1]
@@ -62,8 +62,8 @@ class Rrt:
 
             else:
                 try:
-                    cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x],[node_near.y]]), self.obs_circle, model="unicycle")
-                    x_simulated, u_simulated= cbf_rrt_simulation.motion_planning_with_QP(u_ref, model="unicycle")
+                    cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x],[node_near.y]]), self.obs_circle, model="unicycle_velocity_control")
+                    x_simulated, u_simulated= cbf_rrt_simulation.motion_planning_with_QP(u_ref, model="unicycle_velocity_control")
                     
                     print('try', x_simulated)
                     feasible = True

@@ -1,5 +1,3 @@
-
-
 import matplotlib.pyplot as plt
 import math
 import numpy as np
@@ -60,6 +58,7 @@ class CBF_RRT:
         self.k = 6 # k nearest neighbor obstacles that will be used for generating CBF constraint
         self.cbf_constraints_sensing_radius = 20
         self.k_cbf = 1.0 #CBF coefficient for double intergrators
+        self.k_cbf2 = 2.0 #CBF coefficient for double intergrators, If acceleration is used
         self.p_cbf = 1 #CBF constraint power
         self.k1_unicyle_cbf = 2.0 # CBF coefficient for unicycle
         self.k2_unicyle_cbf = 2.0 # CBF coefficient for unicycle
@@ -232,7 +231,7 @@ class CBF_RRT:
         return obstacles_idx
 
 
-    def motion_planning_with_QP(self,u_ref):
+    def motion_planning_with_QP(self,u_ref,model="linear_velocity_control"):
         x_current = self.y0
         x = np.zeros((2,0))
         u = np.zeros((2,0))
@@ -246,86 +245,125 @@ class CBF_RRT:
                 x_current=x_current+delta_t*u_current
         return (x,u)
 
-    def QP_constraint(self,x_current,u_ref):
-        # self.m = Model("CBF_CLF_QP")
-        x1 = x_current[0]
-        x2 = x_current[1]
-        # self.m.remove(self.m.getConstrs())
-        u1_ref = u_ref[0]
-        u2_ref = u_ref[1]
-        # Control Acutuator Constraints
-        u1_ref = np.clip(u1_ref, self.u1_lower_lim, self.u1_upper_lim)
-        u2_ref = np.clip(u2_ref, self.u2_lower_lim, self.u1_upper_lim)
+    def QP_constraint(self,x_current,u_ref,system_type="linear_velocity_control"):
+        if system_type == "linear_velocity_control":
+            x1 = x_current[0]
+            x2 = x_current[1]
+            
+            u1_ref = u_ref[0] # Linear Velcoity Control
+            u2_ref = u_ref[1] # Linear Velcoity Control
+            # Control Acutuator Constraints
+            u1_ref = np.clip(u1_ref, self.u1_lower_lim, self.u1_upper_lim)
+            u2_ref = np.clip(u2_ref, self.u2_lower_lim, self.u1_upper_lim)
         
-        #obstacle_index = self.find_knn_obstacle(x_current, self.x_obstacle, self.k)
+            obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
 
-        obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
+            if obstacle_index:
+                minCBF = float('inf')
 
-        if obstacle_index:
+                for index in obstacle_index:
+                    h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
+                    lghu = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
+                    CBF_Constraint = lghu+self.k_cbf*h**self.p_cbf
+                    if CBF_Constraint < minCBF:
+                        minCBF = CBF_Constraint
+            
+                if minCBF < 0:
+                    return False
+
+        elif system_type == "linear_acceleration_control":
+            x1 = x_current[0]
+            v1 = x_current[1]
+            x2 = x_current[2]
+            v2 = x_current[3]
+
+            u1_ref = u_ref[0] # Linear Acceleration Control
+            u2_ref = u_ref[1] # Linear Acceleration Control
+
+            # Control Acutuator Constraints
+            u1_ref = np.clip(u1_ref, self.u1_lower_lim, self.u1_upper_lim)
+            u2_ref = np.clip(u2_ref, self.u2_lower_lim, self.u1_upper_lim)
+
+            obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
+
+            if obstacle_index:
+                for index in obstacle_index:
+                    h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
+                    lfh = 2*(x1-self.x_obstacle[index][0])*v1+2*(x2-self.x_obstacle[index][1])*v2
+                    lflfh = 2*v1**2+2*v2**2
+                    lglfhu = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
+                    CBF_Constraint = lflfh + lglfhu + self.k_cbf*h + self.k_cbf2*lfh
+                    if CBF_Constraint < minCBF:
+                        minCBF = CBF_Constraint
+                
+                if minCBF < 0:
+                    return False
+                
+        elif system_type == "unicycle_velocity_control":
+            x = x_current[0]
+            y = x_current[1]
+            theta = x_current[2]
+            v = self.unicycle_constant_v # Fixed Linear Velocity
+
+            w = u_ref # Angular Velocity Control
+
+            # States: x, y, theta
+            obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
             minCBF = float('inf')
 
-            # check CBF constraint
             for index in obstacle_index:
-                h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
+                xo = self.x_obstacle[index][0]
+                yo = self.x_obstacle[index][1]
+                r = self.x_obstacle[index][2]
 
-                lgh = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
-                CBF_Constraint = lgh+self.k_cbf*h**self.p_cbf
-                if CBF_Constraint < minCBF:
-                    minCBF = CBF_Constraint
-
-            if minCBF < 0:
-                return False
-
-        return True
-
-    def QP_constraint_unicycle(self,x_current,u_ref):
-        x = x_current[0]
-        y = x_current[1]
-        theta = x_current[2]
-        v = self.unicycle_constant_v # Constant Control
-
-        # States: x1, x2, theta
-
-        obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
-        minCBF = float('inf')
-
-        for index in obstacle_index:
-            xo = self.x_obstacle[index][0]
-            yo = self.x_obstacle[index][1]
-            r = self.x_obstacle[index][2]
+                # Unicycle with velocity control
+                h = (x-xo)**2+(y-yo)**2-r**2
+                Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
+                LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
+                LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
             
-            '''
-            # Unicycle with accleration control
-            h = (x-xd)**2+(y-yd)**2-r**2
-            h_dot = v*(2*x - 2*xd)*math.cos(theta) + v*(2*y - 2*yd)*math.sin(theta)
-            h_dot_dot = u1*(-v*(2*x - 2*xd)*math.sin(theta) + v*(2*y - 2*yd)*math.cos(theta)) \
-                        + u2*((2*x - 2*xd)*math.cos(theta) + (2*y - 2*yd)*math.sin(theta)) + 2*v**2*math.sin(theta)**2 \
+                cbf = LfLfh+LgLfh*w+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh
+
+                if cbf < 0:
+                    return False
+                
+        elif system_type == "unicycle_acceleration_control":
+            # States: x, y, theta, v
+            x = x_current[0]
+            y = x_current[1]
+            theta = x_current[2]
+            v = x_current[3]
+
+            u1 = u_ref[0] # Angular Velocity Control
+            u2 = u_ref[1] # Linear Acceleration Control
+
+            obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
+            minCBF = float('inf')
+
+            for index in obstacle_index:
+                xo = self.x_obstacle[index][0]
+                yo = self.x_obstacle[index][1]
+                r = self.x_obstacle[index][2]
+
+                h = (x-xo)**2+(y-yo)**2-r**2
+                h_dot = v*(2*x - 2*xo)*math.cos(theta) + v*(2*y - 2*yo)*math.sin(theta)
+                h_dot_dot = u1*(-v*(2*x - 2*xo)*math.sin(theta) + v*(2*y - 2*yo)*math.cos(theta)) \
+                        + u2*((2*x - 2*xo)*math.cos(theta) + (2*y - 2*yo)*math.sin(theta)) + 2*v**2*math.sin(theta)**2 \
                         + 2*v**2*math.cos(theta)**2
 
-            CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
+                CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
 
-            if CBF_Constraint < 0:
-                return False
-            '''
-
-            # Unicycle with velocity control
-            h = (x-xo)**2+(y-yo)**2-r**2
-            Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
-            LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
-            LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
-            
-            cbf = LfLfh+LgLfh*u_ref+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh
-
-            if cbf < 0:
-                return False
+                if CBF_Constraint < 0:
+                    return False
 
         return True
 
 
-    def motion_planning_without_QP(self,u_ref,model="linear"):
-        # model == "linear" or model == "unicycle"
+    def motion_planning_without_QP(self,u_ref,model="linear_velocity_control"):
+        # model == "linear_velocity_control" or "linear_acceleration_control" 
+        # or "unicycle_velocity_control" or "unicycle_acceleration_control"
 
-        if model == "linear":
+        if model == "linear_velocity_control":
             # State: [position_x, position_y]^T, Control:[velocity_x, velocity_y]^T
             x_current = self.y0
             self.x = np.zeros((2,0))
@@ -337,13 +375,14 @@ class CBF_RRT:
                 for i in range(0,self.N):
                     self.x = np.hstack((self.x, x_current))
                     self.u = np.hstack((self.u, u_ref))
-                    if not self.QP_constraint(x_current[:,0],u_ref):
+                    if not self.QP_constraint(x_current[:,0],u_ref,system_type="linear_velocity_control"):
                         return (self.x, self.u)
                     x_current=x_current+delta_t*u_ref
 
             return (self.x,self.u)
         
-        if model == "unicycle":
+        elif model == "unicycle_velocity_control":
+            # State: [position_x, position_y, theta] Control: [ Linear Velocity]
             x_current = self.y0
             self.x = np.zeros((3, 0))
             self.u = np.zeros((1, 0))
@@ -353,7 +392,8 @@ class CBF_RRT:
                 return [math.cos(y_input[2])*self.unicycle_constant_v,math.sin(y_input[2])*self.unicycle_constant_v,u_ref]
             
             
-            if not self.QP_constraint_unicycle(x_current[:,0],u_ref):
+            #if not self.QP_constraint_unicycle(x_current[:,0],u_ref):
+            if not self.QP_constraint(x_current[:,0],u_ref,system_type="unicycle_velocity_control"):
                 self.x = np.hstack((self.x, x_current))
                 self.u = np.append(self.u, u_ref)
                 return (self.x, self.u)
@@ -364,11 +404,8 @@ class CBF_RRT:
             
             return (self.x, self.u)
             
-
-        '''
-        Unicycle with accleration controls
-        if model == "unicycle":
-            # State: [position_x, position_y, theta, velocity]^T Control: [Angular acceleration, Linear Acceleration ]
+        elif model == "unicycle_acceleration_control":
+            # State: [position_x, position_y, theta, velocity] Control: [Angular velocity, Linear Acceleration ]
             x_current = self.y0
             self.x = np.zeros((4, 0))
             self.u = np.zeros((2, 0))
@@ -376,7 +413,7 @@ class CBF_RRT:
 
             def CBF_constraint_checking_event(t, state):
                 x_current = state
-                if self.QP_constraint(x_current[:, 0], self.u_ref):
+                if self.QP_constraint(x_current[:, 0], self.u_ref, system_type="unicycle_acceleration_control"):
                     return False # Continue solve_ivp because the control passes CBF constraints test
                 else:
                     return True # Terminate solve_ivp because control is unsafe
@@ -401,7 +438,7 @@ class CBF_RRT:
             self.u = np.hstack((self.u, u_ref))
 
             return (self.x,self.u)
-            '''
+
 
     def plot_traj(self,x,u):
         #t_span = np.linspace(0,self.T,self.N)
@@ -424,5 +461,5 @@ if __name__ == "__main__":
     u_ref = [0.5, 0.5]
 
     CBFRRT_Planning = CBF_RRT(initial_state, obstacle_list)
-    x, u= CBFRRT_Planning.motion_planning(u_ref)
+    x, u= CBFRRT_Planning.motion_planning_without_QP(u_ref,model="linear_velocity_control")
     CBFRRT_Planning.plot_traj(x,u)

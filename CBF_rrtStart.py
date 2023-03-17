@@ -38,7 +38,7 @@ class Rrt:
         self.obs_rectangle = self.env.obs_rectangle
         self.obs_boundary = self.env.obs_boundary
         self.u_ref_nominal = 2.
-        self.sovle_QP =QP
+        self.sovle_QP = False
 
     def planning(self):
         for i in range(self.iter_max):
@@ -51,7 +51,7 @@ class Rrt:
 
             if not self.sovle_QP:
                 cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x], [node_near.y]]), self.obs_circle)
-                x_simulated, u_simulated = cbf_rrt_simulation.motion_planning_without_QP(u_ref)
+                x_simulated, u_simulated = cbf_rrt_simulation.motion_planning_without_QP(u_ref,model="linear_velocity_control")
                 feasible = True
                 node_new.x = x_simulated[0][-1]
                 node_new.y = x_simulated[1][-1]
@@ -59,7 +59,7 @@ class Rrt:
             else:
                 try:
                     cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x],[node_near.y]]), self.obs_circle)
-                    x_simulated, u_simulated= cbf_rrt_simulation.motion_planning_with_QP(u_ref)
+                    x_simulated, u_simulated= cbf_rrt_simulation.motion_planning_with_QP(u_ref,model="linear_velocity_control")
                     print('try', x_simulated)
                     feasible = True
                     node_new.x = x_simulated[0][-1]
