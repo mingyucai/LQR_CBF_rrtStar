@@ -381,6 +381,31 @@ class CBF_RRT:
 
             return (self.x,self.u)
         
+        if model == "linear_acceleration_control":
+            # State: [position_x, velocity_x, position_y, velocity_y]^T, Control:[acceleration_x, acceleration_y]^T
+            x_current = self.y0
+            p_current = [self.y0[0],self.y0[2]]
+            v_current = [self.y0[1],self.y0[3]]
+
+            self.x = np.zeros((4,0))
+            self.u = np.zeros((2,0))
+            u_ref = np.array([[u_ref[0]], [u_ref[1]]])
+            delta_t = self.T/self.N
+            time_step = 8
+            for _ in range(time_step):
+                for i in range(0,self.N):
+                    self.x = np.hstack((self.x, x_current))
+                    self.u = np.hstack((self.u, u_ref))
+                    if not self.QP_constraint(x_current[:,0],u_ref,system_type="linear_acceleration_control"):
+                        return (self.x, self.u)
+                    #x_current=x_current+0.5*delta_t**2*u_ref
+                    x_current[0] = p_current[0] + v_current[0]*delta_t + 0.5*u_ref[0]*delta_t**2
+                    x_current[1] = v_current[0] + u_ref[0]*delta_t
+                    x_current[2] = p_current[1] + v_current[1]*delta_t + 0.5*u_ref[1]*delta_t**2
+                    x_current[3] = v_current[1] + u_ref[1]*delta_t
+
+            return (self.x,self.u)
+        
         elif model == "unicycle_velocity_control":
             # State: [position_x, position_y, theta] Control: [ Linear Velocity]
             x_current = self.y0
