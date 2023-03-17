@@ -287,6 +287,7 @@ class CBF_RRT:
             obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
 
             if obstacle_index:
+                minCBF = float('inf')
                 for index in obstacle_index:
                     h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
                     lfh = 2*(x1-self.x_obstacle[index][0])*v1+2*(x2-self.x_obstacle[index][1])*v2
@@ -309,22 +310,27 @@ class CBF_RRT:
 
             # States: x, y, theta
             obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
-            minCBF = float('inf')
-
-            for index in obstacle_index:
-                xo = self.x_obstacle[index][0]
-                yo = self.x_obstacle[index][1]
-                r = self.x_obstacle[index][2]
-
-                # Unicycle with velocity control
-                h = (x-xo)**2+(y-yo)**2-r**2
-                Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
-                LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
-                LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
             
-                cbf = LfLfh+LgLfh*w+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh
+            if obstacle_index:
+                minCBF = float('inf')
 
-                if cbf < 0:
+                for index in obstacle_index:
+                    xo = self.x_obstacle[index][0]
+                    yo = self.x_obstacle[index][1]
+                    r = self.x_obstacle[index][2]
+
+                    # Unicycle with velocity control
+                    h = (x-xo)**2+(y-yo)**2-r**2
+                    Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
+                    LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
+                    LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
+            
+                    CBF_Constraint = LfLfh+LgLfh*w+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh
+
+                    if CBF_Constraint < minCBF:
+                        minCBF = CBF_Constraint
+
+                if minCBF < 0:
                     return False
                 
         elif system_type == "unicycle_acceleration_control":
@@ -338,22 +344,25 @@ class CBF_RRT:
             u2 = u_ref[1] # Linear Acceleration Control
 
             obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
-            minCBF = float('inf')
+            if obstacle_index:
+                minCBF = float('inf')
 
-            for index in obstacle_index:
-                xo = self.x_obstacle[index][0]
-                yo = self.x_obstacle[index][1]
-                r = self.x_obstacle[index][2]
+                for index in obstacle_index:
+                    xo = self.x_obstacle[index][0]
+                    yo = self.x_obstacle[index][1]
+                    r = self.x_obstacle[index][2]
 
-                h = (x-xo)**2+(y-yo)**2-r**2
-                h_dot = v*(2*x - 2*xo)*math.cos(theta) + v*(2*y - 2*yo)*math.sin(theta)
-                h_dot_dot = u1*(-v*(2*x - 2*xo)*math.sin(theta) + v*(2*y - 2*yo)*math.cos(theta))
-                + u2*((2*x - 2*xo)*math.cos(theta) + (2*y - 2*yo)*math.sin(theta)) + 2*v**2*math.sin(theta)**2
-                + 2*v**2*math.cos(theta)**2
+                    h = (x-xo)**2+(y-yo)**2-r**2
+                    h_dot = v*(2*x - 2*xo)*math.cos(theta) + v*(2*y - 2*yo)*math.sin(theta)
+                    h_dot_dot = u1*(-v*(2*x - 2*xo)*math.sin(theta) + v*(2*y - 2*yo)*math.cos(theta))
+                    + u2*((2*x - 2*xo)*math.cos(theta) + (2*y - 2*yo)*math.sin(theta)) + 2*v**2*math.sin(theta)**2
+                    + 2*v**2*math.cos(theta)**2
 
-                CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
+                    CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
 
-                if CBF_Constraint < 0:
+                    if CBF_Constraint < minCBF:
+                        minCBF = CBF_Constraint
+                if minCBF < 0:
                     return False
 
         return True
