@@ -347,9 +347,9 @@ class CBF_RRT:
 
                 h = (x-xo)**2+(y-yo)**2-r**2
                 h_dot = v*(2*x - 2*xo)*math.cos(theta) + v*(2*y - 2*yo)*math.sin(theta)
-                h_dot_dot = u1*(-v*(2*x - 2*xo)*math.sin(theta) + v*(2*y - 2*yo)*math.cos(theta)) \
-                        + u2*((2*x - 2*xo)*math.cos(theta) + (2*y - 2*yo)*math.sin(theta)) + 2*v**2*math.sin(theta)**2 \
-                        + 2*v**2*math.cos(theta)**2
+                h_dot_dot = u1*(-v*(2*x - 2*xo)*math.sin(theta) + v*(2*y - 2*yo)*math.cos(theta))
+                + u2*((2*x - 2*xo)*math.cos(theta) + (2*y - 2*yo)*math.sin(theta)) + 2*v**2*math.sin(theta)**2
+                + 2*v**2*math.cos(theta)**2
 
                 CBF_Constraint = h_dot_dot + 2*h*h_dot + (h_dot+h**2)**2
 
