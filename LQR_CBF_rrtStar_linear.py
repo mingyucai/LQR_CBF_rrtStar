@@ -28,6 +28,7 @@ class Node:
         self.parent = None
         self.cost = 0
         self.StateTraj = None
+        self.childrenNodeInds = set([])
 
 class LQRrrtStar:
     def __init__(self, x_start, x_goal, step_len,
@@ -161,8 +162,8 @@ class LQRrrtStar:
         node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling 
         return node_new
 
-    def cal_LQR_new_cost(self, node_start, node_goal):
-        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False)
+    def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
+        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False,cbf_check = cbf_check)
         px, py, traj_cost = self.sample_path(wx, wy)
         if wx is None:
             return float('inf'), False
@@ -187,8 +188,9 @@ class LQRrrtStar:
             return None
 
         cost_min_index = neighbor_index[int(np.argmin(cost))]
-        node_new.parent = self.vertex[cost_min_index]
-
+        node_new.parent = self.vertex[cost_min_index] 
+        node_new.parent.childrenNodeInds.add(len(self.vertex)-1) # Add the index of node_new to the children of its parent. This step is essential when rewiring the tree to project the changes of the cost of the rewired node to its antecessors  
+        
 
     def rewire(self, node_new, neighbor_index):
         for i in neighbor_index:
@@ -201,7 +203,13 @@ class LQRrrtStar:
                 if can_rach and node_neighbor.cost > new_cost:
                     node_neighbor.parent = node_new
                     node_neighbor.cost = new_cost
+                    self.updateCosts(node_neighbor)
 
+    def updateCosts(self,node):
+        for ich in node.childrenNodeInds: 
+            self.vertex[ich].cost = self.cal_LQR_new_cost(node,self.vertex[ich],cbf_check = False)[0] # FIXME since we already know that this path is safe, we only need to compute the cost 
+            self.updateCosts(self.vertex[ich])
+            
 
     def search_goal_parent(self):
         dist_list = [math.hypot(n.x - self.s_goal.x, n.y - self.s_goal.y) for n in self.vertex]
