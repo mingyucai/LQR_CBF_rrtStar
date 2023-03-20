@@ -68,7 +68,7 @@ class LQRPlanner:
 
             # check if LQR control is safe with respect to CBF constraint
             if cbf_check and not test_LQR:
-                if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy],u):
+                if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy], u):
                     break
 
 
