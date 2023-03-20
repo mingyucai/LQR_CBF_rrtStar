@@ -7,8 +7,9 @@ import timeit
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KernelDensity
 
+import pathlib
+sys.path.append(str(pathlib.Path(__file__).parent.parent))
 import env, plotting, utils, Queue
-
 from LQR_planning import LQRPlanner
 
 import copy
@@ -440,7 +441,7 @@ def main():
     x_goal = (30, 24)  # Goal node
 
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 3500, AdSamplingFlag=False)
+    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 6000,AdSamplingFlag=False)
     rrt_star.planning()
 
 

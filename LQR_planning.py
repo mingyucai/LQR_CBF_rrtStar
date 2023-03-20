@@ -171,7 +171,8 @@ class LQRPlanner_acceleration:
             # check if LQR control is safe with respect to CBF constraint
             if cbf_check and not test_LQR:
 
-                if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gvx, x[3, 0] + gvy], u):
+                if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gvx, x[3, 0] + gvy], u, "linear_acceleration_control"):
+                    print("violation")
                     break
 
 
@@ -186,7 +187,7 @@ class LQRPlanner_acceleration:
 
             if d <= self.GOAL_DIST:
                 found_path = True
-                print('errors ', d)
+                # print('errors ', d)
                 break
 
             # animation
@@ -284,8 +285,6 @@ def main():
         ax2.legend(loc='upper right')
         ax2.grid()
         plt.show()
-
-
 
 
         if SHOW_ANIMATION:  # pragma: no cover
