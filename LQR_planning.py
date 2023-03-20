@@ -1,12 +1,11 @@
-
 import math
 import random
-
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
-from CBFsteer import CBF_RRT
 import time
+
+from CBFsteer import CBF_RRT
 import env, plotting, utils
 
 SHOW_ANIMATION = False
