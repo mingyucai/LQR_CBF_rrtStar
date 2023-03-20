@@ -2,9 +2,8 @@
 
 
 ### To Do:
-(1). doulbe integer system
+(1). improve velocity settings
 
-(2). High-order CBF for linear systems
-
+(2). Conservative issue for High-order CBF of linear acceleration systems
 
 (3) Nonlinear Systems
