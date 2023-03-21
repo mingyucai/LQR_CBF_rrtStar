@@ -98,7 +98,7 @@ class LQRrrtStar:
                 print('rrtStar 1000 iterations sampling time: ', time.time() - start_time)
                 start_time = time.time()
 
-            if k % 2000 == 0:
+            if k % 500 == 0:
                 print('rrtStar sampling iterations: ', k)
                 self.plotting.animation_online(self.vertex, "rrtStar", True)
 
@@ -446,7 +446,7 @@ def main():
     x_goal = (30, 24)  # Goal node
 
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 6000, AdSamplingFlag=False)
+    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 3000, AdSamplingFlag = False)
     rrt_star.planning()
 
 

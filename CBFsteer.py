@@ -235,7 +235,7 @@ class CBF_RRT:
         return obstacles_idx
 
 
-    def motion_planning_with_QP(self,u_ref,model="linear_velocity_control"):
+    def motion_planning_with_QP(self,u_ref, model="linear_velocity_control"):
         x_current = self.y0
         x = np.zeros((2,0))
         u = np.zeros((2,0))
@@ -268,7 +268,7 @@ class CBF_RRT:
                 for index in obstacle_index:
                     h = (x1-self.x_obstacle[index][0])**2+(x2-self.x_obstacle[index][1])**2-self.x_obstacle[index][2]**2
                     lghu = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
-                    CBF_Constraint = lghu+self.k_cbf*h**self.p_cbf
+                    CBF_Constraint = lghu + 1.5 * self.k_cbf * h**self.p_cbf 
                     if CBF_Constraint < minCBF:
                         minCBF = CBF_Constraint
             
@@ -276,6 +276,8 @@ class CBF_RRT:
                     return False
 
         elif system_type == "linear_acceleration_control":
+            # print('acceleration')
+
             x1 = x_current[0]
             v1 = x_current[1]
             x2 = x_current[2]
@@ -297,7 +299,7 @@ class CBF_RRT:
                     lfh = 2*(x1-self.x_obstacle[index][0])*v1+2*(x2-self.x_obstacle[index][1])*v2
                     lflfh = 2*v1**2+2*v2**2
                     lglfhu = 2*(x1-self.x_obstacle[index][0])*u1_ref+2*(x2-self.x_obstacle[index][1])*u2_ref
-                    CBF_Constraint = lflfh + lglfhu + self.k_cbf*h + self.k_cbf2*lfh
+                    CBF_Constraint = lflfh + lglfhu + 3.0 * self.k_cbf*h + 1.5 * self.k_cbf2*lfh
                     if CBF_Constraint < minCBF:
                         minCBF = CBF_Constraint
                 
