@@ -15,27 +15,16 @@ SHOW_ANIMATION = False
 
 class LQRPlanner:
 
-    def __init__(self, gx, gy):
+    def __init__(self):
 
         self.N = 3  # number of state variables
         self.M = 2  # number of control variables
         self.DT = 0.2  # discretization step
 
         self.MAX_TIME = 100.0  # Maximum simulation time
-        self.GOAL_DIST = 0.5
+        self.GOAL_DIST = 0.6
         self.MAX_ITER = 250
         self.EPS = 0.01
-
-         # Linearize system model
-        xd = np.matrix([[gx], [gy], [np.pi/4]])
-        ud = np.matrix([[0], [0]])
-        self.A, self.B, self.C = self.get_linear_model(xd, ud)
-
-
-        # LQR gain is invariant
-        Q = np.matrix("0.5 0 0; 0 1 0; 0 0 0.01")
-        R = np.matrix("0.01 0; 0 0.01")
-        self.K = self.dLQR(self.A, self.B, Q, R)
 
         # initialize CBF
         self.env = env.Env()
@@ -46,6 +35,16 @@ class LQRPlanner:
         self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
 
     def lqr_planning(self, sx, sy, gx, gy, test_LQR = False, show_animation = True, cbf_check = True):
+
+        # Linearize system model
+        xd = np.matrix([[gx], [gy], [np.pi/4]])
+        ud = np.matrix([[0], [0]])
+        self.A, self.B, self.C = self.get_linear_model(xd, ud)
+        # LQR gain is invariant
+        Q = np.matrix("0.5 0 0; 0 1 0; 0 0 0.01")
+        R = np.matrix("0.01 0; 0 0.01")
+        self.K = self.dLQR(self.A, self.B, Q, R)
+
 
         self.cbf_rrt_simulation.set_initial_state(np.array([[sx],[sy]]))
 
@@ -68,7 +67,7 @@ class LQRPlanner:
 
             # check if LQR control is safe with respect to CBF constraint
             if cbf_check and not test_LQR:
-                if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy], u):
+                if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, system_type = "unicycle_velocity_control"):
                     break
 
 
@@ -83,7 +82,7 @@ class LQRPlanner:
 
             if d <= self.GOAL_DIST:
                 found_path = True
-                print('errors ', d)
+                # print('errors ', d)
                 break
 
             # animation

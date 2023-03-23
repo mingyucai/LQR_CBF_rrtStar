@@ -249,7 +249,7 @@ class CBF_RRT:
                 x_current=x_current+delta_t*u_current
         return (x,u)
 
-    def QP_constraint(self,x_current,u_ref,system_type="linear_velocity_control"):
+    def QP_constraint(self,x_current, u_ref,system_type="linear_velocity_control"):
         if system_type == "linear_velocity_control":
             x1 = x_current[0]
             x2 = x_current[1]
@@ -310,9 +310,9 @@ class CBF_RRT:
             x = x_current[0]
             y = x_current[1]
             theta = x_current[2]
-            v = self.unicycle_constant_v # Fixed Linear Velocity
+            v = u_ref[0]   #self.unicycle_constant_v # Fixed Linear Velocity
 
-            w = u_ref # Angular Velocity Control
+            w = u_ref[1] # Angular Velocity Control
 
             # States: x, y, theta
             obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
