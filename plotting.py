@@ -21,7 +21,6 @@ class Plotting:
         self.plot_grid(name)
         self.plot_visited(nodelist, animation)
         self.plot_path(path)
-        plt.savefig("LQR-CBF_result.PNG")
 
     def animation_online(self, nodelist, name, animation=False):
         self.plot_grid(name)
@@ -116,4 +115,5 @@ class Plotting:
         if len(path) != 0:
             plt.plot([x[0] for x in path], [x[1] for x in path], '-r', linewidth=2)
             plt.pause(0.01)
+            plt.savefig("LQR-CBF_result.PNG")
         plt.show()

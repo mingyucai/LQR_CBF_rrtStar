@@ -438,7 +438,7 @@ def main():
     x_goal = (30, 24)  # Goal node
 
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 4000, AdSamplingFlag = False)
+    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 2000, AdSamplingFlag = False)
     rrt_star.planning()
 
 
