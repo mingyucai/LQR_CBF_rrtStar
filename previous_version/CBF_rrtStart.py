@@ -39,7 +39,6 @@ class Rrt:
         self.obs_boundary = self.env.obs_boundary
         self.u_ref_nominal = 2.
         self.sovle_QP =QP
-        self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
 
     def planning(self):
         for i in range(self.iter_max):
@@ -51,16 +50,16 @@ class Rrt:
             u_ref = [self.u_ref_nominal * math.cos(sampled_theta), self.u_ref_nominal * math.sin(sampled_theta)]
 
             if not self.sovle_QP:
-                self.cbf_rrt_simulation.set_initial_state(np.array([[node_near.x],[node_near.y]]))
-                x_simulated, u_simulated = self.cbf_rrt_simulation.motion_planning_without_QP(u_ref)
+                cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x], [node_near.y]]), self.obs_circle)
+                x_simulated, u_simulated = cbf_rrt_simulation.motion_planning_without_QP(u_ref)
                 feasible = True
                 node_new.x = x_simulated[0][-1]
                 node_new.y = x_simulated[1][-1]
 
             else:
                 try:
-                    self.cbf_rrt_simulation.set_initial_state(np.array([[node_near.x],[node_near.y]]))
-                    x_simulated, u_simulated= self.cbf_rrt_simulation.motion_planning_with_QP(u_ref)
+                    cbf_rrt_simulation = CBF_RRT(np.array([[node_near.x],[node_near.y]]), self.obs_circle)
+                    x_simulated, u_simulated= cbf_rrt_simulation.motion_planning_with_QP(u_ref)
                     print('try', x_simulated)
                     feasible = True
                     node_new.x = x_simulated[0][-1]
@@ -83,13 +82,9 @@ class Rrt:
                     if neighbor_index:
                         self.choose_parent(node_new, neighbor_index)
                         self.rewire(node_new, neighbor_index)
-
-
         index = self.search_goal_parent()
         self.path = self.extract_path(self.vertex[index])
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
-
-
         if self.path:
             return self.path
         return None

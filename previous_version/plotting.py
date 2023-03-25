@@ -67,7 +67,7 @@ class Plotting:
             )
 
         plt.plot(self.xI[0], self.xI[1], "bs", linewidth=3)
-        plt.plot(self.xG[0], self.xG[1], "rs", linewidth=3)
+        plt.plot(self.xG[0], self.xG[1], "gs", linewidth=3)
 
         plt.title(name)
         plt.axis("equal")
@@ -115,5 +115,4 @@ class Plotting:
         if len(path) != 0:
             plt.plot([x[0] for x in path], [x[1] for x in path], '-r', linewidth=2)
             plt.pause(0.01)
-            plt.savefig("LQR-CBF_result.PNG")
         plt.show()

@@ -3,9 +3,13 @@ import sys
 import math
 import numpy as np
 
-import env, plotting, utils, queue
+import env, plotting, utils, Queue
 
-from LQR_planning import LQRPlanner
+from LQR_control import LQRPlanner
+
+import time
+
+import copy
 
 """
 RRT_star 2D
@@ -45,13 +49,17 @@ class LQRrrtStar:
         self.lqr_planner = LQRPlanner()
 
     def planning(self):
+        start_time = time.time()
         for k in range(self.iter_max):
             node_rand = self.generate_random_node(self.goal_sample_rate)
             node_near = self.nearest_neighbor(self.vertex, node_rand)
             node_new = self.LQR_steer(node_near, node_rand)
 
+
             if k % 100 == 0:
                 print('rrtStar sampling iterations: ', k)
+                print('rrtStar 1000 iterations sampling time: ', time.time() - start_time)
+                start_time = time.time()
 
             if k % 2000 == 0:
                 print('rrtStar sampling iterations: ', k)
@@ -95,7 +103,7 @@ class LQRrrtStar:
         node_goal.x = node_start.x + dist * math.cos(theta)
         node_goal.y = node_start.y + dist * math.sin(theta)
 
-        wx, wy, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False)
+        wx, wy, _, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False)
         px, py, traj_cost = self.sample_path(wx, wy)
 
         if wx is None:
@@ -108,7 +116,7 @@ class LQRrrtStar:
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal):
-        wx, wy, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False)
+        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False)
         px, py, traj_cost = self.sample_path(wx, wy)
         if wx is None:
             return float('inf'), False
@@ -119,7 +127,7 @@ class LQRrrtStar:
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False)
+            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False)
 
             if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
                 update_cost, _ = self.cal_LQR_new_cost(self.vertex[i], node_new)
@@ -171,7 +179,7 @@ class LQRrrtStar:
             return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
                          np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
 
-        return self.s_goal
+        return copy.deepcopy(self.s_goal)
 
     def find_near_neighbor(self, node_new):
         n = len(self.vertex) + 1
