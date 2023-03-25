@@ -2,8 +2,6 @@
 
 
 ### To Do:
-(1). improve velocity settings
+(1). Hash table to store LQR gain to imporve efficiency of rewrite
 
-(2). Conservative issue for High-order CBF of linear acceleration systems
-
-(3) Nonlinear Systems
+(2). improve velocity settings
