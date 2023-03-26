@@ -343,11 +343,11 @@ class CBF_RRT:
             # States: x, y, theta, v
             x = x_current[0]
             y = x_current[1]
-            theta = x_current[2]
-            v = x_current[3]
+            v = x_current[2]
+            theta = x_current[3]
 
-            u1 = u_ref[0] # Angular Velocity Control
-            u2 = u_ref[1] # Linear Acceleration Control
+            u1 = u_ref[1] # Angular Velocity Control
+            u2 = u_ref[0] # Linear Acceleration Control
 
             obstacle_index = self.find_obstacles_within_cbf_sensing_range(x_current, self.x_obstacle)
             if obstacle_index:

@@ -16,12 +16,6 @@ from LQR_planning import LQRPlanner_acceleration
 import copy
 import time
 
-"""
-LQR_CBF_RRT_star 2D
-@author: mingyu cai
-
-CBF_QP constraint is incorporated with LQR constraint
-"""
 
 class Node:
     def __init__(self, n):
