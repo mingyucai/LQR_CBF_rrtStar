@@ -86,9 +86,6 @@ class LQRrrtStar:
             node_rand = self.generate_random_node(self.goal_sample_rate)
             node_near = self.nearest_neighbor(self.vertex, node_rand)
             node_new = self.LQR_steer(node_near, node_rand)
-            print(node_new)
-            exit(0)
-
 
 
             if k % 100 == 0:
