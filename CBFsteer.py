@@ -174,14 +174,15 @@ class CBF_RRT:
             y = x_current[1]
             theta = x_current[2]
 
-            v = self.unicycle_constant_v # Set constant linear velcoity to avoid mixed relative degree control
+            v = u_ref[0]  #self.unicycle_constant_v # Set constant linear velcoity to avoid mixed relative degree control
+            yaw = u_ref[1]
 
             self.m.remove(self.m.getConstrs())
             #Control angular velocity
             self.w = self.m.addVar(lb=self.w_lower_lim, ub=self.w_upper_lim,vtype=GRB.CONTINUOUS, name="Control_Angular_Velocity")
 
             # Initialize Cost Function, minimize distanc to u_ref
-            self.cost_func = (self.w-u_ref)*(self.w-u_ref)
+            self.cost_func = (self.w-yaw)*(self.w-yaw)
             self.m.setObjective(self.cost_func, GRB.MINIMIZE)
 
             # CBF Constraint for h(x) = (x1 + x_{obs,1})^2 + (x2 + x_{obs,2})^2 - r^2>= 0
@@ -202,7 +203,7 @@ class CBF_RRT:
             self.solution = self.m.getVars()
             u = self.solution[0].x
 
-            return np.array([u])
+            return np.array([v, u]).reshape(2,1)
 
     def find_knn_obstacle(self, x_current, x_obstacles,k):
         '''
