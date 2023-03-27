@@ -34,7 +34,7 @@ class LQRPlanner:
 
         self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
 
-    def lqr_planning(self, sx, sy, gx, gy, test_LQR = False, show_animation = True, cbf_check = True):
+    def lqr_planning(self, sx, sy, gx, gy, LQR_gain, test_LQR = False, show_animation = True, cbf_check = True):
 
         # Linearize system model
         xd = np.matrix([[gx], [gy], [np.pi/4]])
@@ -43,7 +43,15 @@ class LQRPlanner:
         # LQR gain is invariant
         Q = np.matrix("0.5 0 0; 0 1 0; 0 0 0.01")
         R = np.matrix("0.01 0; 0 0.01")
-        self.K = self.dLQR(self.A, self.B, Q, R)
+
+        # check the hash table to store LQR feedback Gain
+        waypoint = (gx, gy)
+        if waypoint in LQR_gain:
+            # print('found one prebious gain')
+            self.K = LQR_gain[waypoint]
+        else:
+            self.K = self.dLQR(self.A, self.B, Q, R)
+            LQR_gain[waypoint] = self.K
 
 
         self.cbf_rrt_simulation.set_initial_state(np.array([[sx],[sy]]))

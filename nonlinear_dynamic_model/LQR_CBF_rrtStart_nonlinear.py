@@ -50,6 +50,7 @@ class LQRrrtStar:
         self.obs_boundary = self.env.obs_boundary
 
         self.lqr_planner = LQRPlanner()
+        self.LQR_Gain = dict()
 
         # The adaptive sampling attributes: 
         self.Vg_leaves = []
@@ -146,8 +147,11 @@ class LQRrrtStar:
         node_goal.x = node_start.x + dist * math.cos(theta)
         node_goal.y = node_start.y + dist * math.sin(theta)
 
-        wx, wy, _, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=show_animation)
+
+        wx, wy, _, _, = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, self.LQR_Gain, show_animation=show_animation)
         px, py, traj_cost = self.sample_path(wx, wy)
+
+
 
         if len(wx) == 1:
             return None
@@ -159,10 +163,12 @@ class LQRrrtStar:
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
-        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False,cbf_check = cbf_check)
+        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, self.LQR_Gain, show_animation=False, cbf_check = cbf_check)
         px, py, traj_cost = self.sample_path(wx, wy)
         if wx is None:
             return float('inf'), False
+        
+
         return node_start.cost + sum(abs(c) for c in traj_cost), can_reach
 
     def LQR_choose_parent(self, node_new, neighbor_index):
@@ -170,7 +176,8 @@ class LQRrrtStar:
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False)
+            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, self.LQR_Gain, show_animation=False)
+
 
             if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
                 update_cost, _ = self.cal_LQR_new_cost(self.vertex[i], node_new)
