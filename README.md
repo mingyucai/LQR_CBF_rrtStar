@@ -7,4 +7,4 @@
 
 (2). If we want to solve QP-solver, we need to addrees the case of infeasible solutions
 
-(2). improve velocity settings
+(3). improve velocity settings

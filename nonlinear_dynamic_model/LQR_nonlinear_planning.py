@@ -34,7 +34,7 @@ class LQRPlanner:
 
         self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
 
-    def lqr_planning(self, sx, sy, gx, gy, LQR_gain, test_LQR = False, show_animation = True, cbf_check = True, solve_QP = True):
+    def lqr_planning(self, sx, sy, gx, gy, LQR_gain, test_LQR = False, show_animation = True, cbf_check = True, solve_QP = False):
 
         # Linearize system model
         xd = np.matrix([[gx], [gy], [np.pi/4]])
