@@ -191,12 +191,18 @@ class CBF_RRT:
                 yo = self.x_obstacle[i][1]
                 r = self.x_obstacle[i][2]
 
-                h = (x-xo)**2+(y-yo)**2-r**2
-                Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
-                LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
-                LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
+                h = float((x-xo)**2+(y-yo)**2-r**2)
 
-                self.m.addConstr(LfLfh+LgLfh*self.w+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh>=0,"CBF_constraint")
+                Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
+                Lfh = float(Lfh[0, 0])
+
+                LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
+                LfLfh = float(LfLfh[0, 0])
+
+                LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
+                LgLfh = float(LgLfh[0, 0])
+
+                self.m.addConstr( LfLfh+LgLfh*self.w+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh >= 0,"CBF_constraint")
 
             #Solve the optimization problem
             self.m.optimize()

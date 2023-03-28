@@ -34,7 +34,7 @@ class LQRPlanner:
 
         self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
 
-    def lqr_planning(self, sx, sy, gx, gy, LQR_gain, test_LQR = False, show_animation = True, cbf_check = True, solve_QP = False):
+    def lqr_planning(self, sx, sy, gx, gy, LQR_gain, test_LQR = False, show_animation = True, cbf_check = True, solve_QP = True):
 
         # Linearize system model
         xd = np.matrix([[gx], [gy], [np.pi/4]])
@@ -82,9 +82,7 @@ class LQRPlanner:
                 if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, system_type = "unicycle_velocity_control"):
                     break
             if solve_QP:
-                u = self.cbf_rrt_simulation.QP_controller([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, system_type = "unicycle")
-           
-
+                u = self.cbf_rrt_simulation.QP_controller([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, model = "unicycle")
 
             xk = self.A @ xk + self.B @ u + self.C
 
