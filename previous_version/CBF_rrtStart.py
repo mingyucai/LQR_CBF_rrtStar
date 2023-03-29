@@ -38,7 +38,7 @@ class Rrt:
         self.obs_rectangle = self.env.obs_rectangle
         self.obs_boundary = self.env.obs_boundary
         self.u_ref_nominal = 2.
-        self.sovle_QP =QP
+        self.sovle_QP =True
 
     def planning(self):
         for i in range(self.iter_max):

@@ -33,7 +33,7 @@ class LQRPlanner:
 
         self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
 
-    def lqr_planning(self, sx, sy, gx, gy, test_LQR = False, show_animation = True, cbf_check = True):
+    def lqr_planning(self, sx, sy, gx, gy, test_LQR = False, show_animation = True, cbf_check = True, solve_QP = True):
 
         self.cbf_rrt_simulation.set_initial_state(np.array([[sx],[sy]]))
 
@@ -53,10 +53,15 @@ class LQRPlanner:
             u = self.K @ x
 
             # check if LQR control is safe with respect to CBF constraint
-            if cbf_check and not test_LQR:
+            if cbf_check and not test_LQR and not solve_QP:
                 if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy],u):
                     break
-
+            
+            if solve_QP:
+                try:
+                    u = self.cbf_rrt_simulation.QP_controller(x, u, model="linear")
+                except:
+                    break
 
             x = self.A @ x + self.B @ u
 

@@ -33,7 +33,7 @@ class Node:
 
 class LQRrrtStar:
     def __init__(self, x_start, x_goal, step_len,
-                 goal_sample_rate, search_radius, iter_max,AdSamplingFlag = False):
+                 goal_sample_rate, search_radius, iter_max, AdSamplingFlag = False, solve_QP =False):
         self.s_start = Node(x_start)
         self.s_goal = Node(x_goal)
         self.step_len = step_len
@@ -55,6 +55,7 @@ class LQRrrtStar:
         self.obs_boundary = self.env.obs_boundary
 
         self.lqr_planner = LQRPlanner()
+        self.solve_QP = solve_QP
 
         # The adaptive sampling attributes: 
         self.Vg_leaves = []
@@ -97,7 +98,7 @@ class LQRrrtStar:
                 print('rrtStar 1000 iterations sampling time: ', time.time() - start_time)
                 start_time = time.time()
 
-            if k % 2000 == 0:
+            if k % 1000 == 0:
                 print('rrtStar sampling iterations: ', k)
                 self.plotting.animation_online(self.vertex, "rrtStar", False)
 
@@ -165,7 +166,7 @@ class LQRrrtStar:
         node_goal.x = node_start.x + dist * math.cos(theta)
         node_goal.y = node_start.y + dist * math.sin(theta)
 
-        wx, wy, _, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=show_animation)
+        wx, wy, _, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=show_animation, solve_QP = self.solve_QP)
         px, py, traj_cost = self.sample_path(wx, wy)
 
         if len(wx) == 1:
@@ -178,7 +179,7 @@ class LQRrrtStar:
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
-        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False,cbf_check = cbf_check)
+        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False,cbf_check = cbf_check, solve_QP = self.solve_QP)
         px, py, traj_cost = self.sample_path(wx, wy)
         if wx is None:
             return float('inf'), False
@@ -189,7 +190,7 @@ class LQRrrtStar:
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False)
+            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False, solve_QP = self.solve_QP)
 
             if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
                 update_cost, _ = self.cal_LQR_new_cost(self.vertex[i], node_new)
@@ -466,7 +467,7 @@ def main():
     x_goal = (30, 24)  # Goal node
 
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 6000,AdSamplingFlag=False)
+    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 2000,AdSamplingFlag=False)
     rrt_star.planning()
 
 

@@ -129,8 +129,9 @@ class CBF_RRT:
     def QP_controller(self,x_current,u_ref, model="linear"):
         if model == "linear":
             self.m = Model("CBF_CLF_QP_Linear")
-            x1 = x_current[0]
-            x2 = x_current[1]
+            x1 = x_current[0, 0]
+            x2 = x_current[1, 0]
+
 
             self.m.remove(self.m.getConstrs())
             u1_ref = u_ref[0]
