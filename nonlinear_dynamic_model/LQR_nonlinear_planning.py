@@ -81,8 +81,13 @@ class LQRPlanner:
             if cbf_check and not test_LQR and not solve_QP:
                 if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, system_type = "unicycle_velocity_control"):
                     break
+
             if solve_QP:
-                u = self.cbf_rrt_simulation.QP_controller([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, model = "unicycle")
+                try:
+                    u = self.cbf_rrt_simulation.QP_controller([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, model = "unicycle")
+                except:
+                    print('infeasible')
+                    break
 
             xk = self.A @ xk + self.B @ u + self.C
 

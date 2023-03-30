@@ -126,12 +126,11 @@ class CBF_RRT:
         return u_ref
         
 
-    def QP_controller(self,x_current,u_ref, model="linear"):
+    def QP_controller(self, x_current, u_ref, model="linear"):
         if model == "linear":
             self.m = Model("CBF_CLF_QP_Linear")
             x1 = x_current[0, 0]
             x2 = x_current[1, 0]
-
 
             self.m.remove(self.m.getConstrs())
             u1_ref = u_ref[0]
@@ -175,8 +174,9 @@ class CBF_RRT:
             y = x_current[1]
             theta = x_current[2]
 
-            v = u_ref[0]  #self.unicycle_constant_v # Set constant linear velcoity to avoid mixed relative degree control
-            yaw = u_ref[1]
+
+            v = u_ref[0, 0]  #self.unicycle_constant_v # Set constant linear velcoity to avoid mixed relative degree control
+            yaw = u_ref[1, 0]
 
             self.m.remove(self.m.getConstrs())
             #Control angular velocity
@@ -192,19 +192,19 @@ class CBF_RRT:
                 yo = self.x_obstacle[i][1]
                 r = self.x_obstacle[i][2]
 
-                h = float((x-xo)**2+(y-yo)**2-r**2)
+                h = (x-xo)**2+(y-yo)**2-r**2
 
                 Lfh = v*math.cos(theta)*(2*x-2*xo)+v*math.sin(theta)*(2*y-2*yo)
-                Lfh = float(Lfh[0, 0])
 
                 LfLfh = 2*(v**2)*math.cos(theta)**2+2*(v**2)*math.sin(theta)**2
-                LfLfh = float(LfLfh[0, 0])
 
                 LgLfh = v*math.cos(theta)*(2*y-2*yo) - v*math.sin(theta)*(2*x-2*xo)
-                LgLfh = float(LgLfh[0, 0])
 
                 self.m.addConstr( LfLfh+LgLfh*self.w+self.k1_unicyle_cbf*h+self.k2_unicyle_cbf*Lfh >= 0,"CBF_constraint")
 
+            #Stop optimizer from publsihing results to console - remove if desired
+            self.m.Params.LogToConsole = 0
+            
             #Solve the optimization problem
             self.m.optimize()
             self.solution = self.m.getVars()

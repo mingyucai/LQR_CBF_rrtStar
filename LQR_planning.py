@@ -61,6 +61,7 @@ class LQRPlanner:
                 try:
                     u = self.cbf_rrt_simulation.QP_controller(x, u, model="linear")
                 except:
+                    print('infeasible')
                     break
 
             x = self.A @ x + self.B @ u
@@ -89,7 +90,6 @@ class LQRPlanner:
                 plt.pause(1.0)
 
         if not found_path:
-            #print("Cannot found path")
             return rx, ry, error,found_path
 
         return rx, ry, error,found_path
