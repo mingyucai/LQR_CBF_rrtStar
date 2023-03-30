@@ -86,7 +86,7 @@ class LQRPlanner:
                 try:
                     u = self.cbf_rrt_simulation.QP_controller([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gtheta], u, model = "unicycle")
                 except:
-                    print('infeasible')
+                    print('The CBF-QP at current steering step is infeasible')
                     break
 
             xk = self.A @ xk + self.B @ u + self.C
