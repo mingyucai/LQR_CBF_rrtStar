@@ -10,12 +10,17 @@ from sklearn.neighbors import KernelDensity
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
 import env, plotting, utils, Queue
-# from LQR_planning import LQRPlanner
-from LQR_nonlinear_planning import LQRPlanner
+from MPC_planning import MPCplanner
 
 import copy
 import time
 
+"""
+LQR_CBF_RRT_star 2D
+@author: mingyu cai
+
+CBF_QP constraint is incorporated with LQR constraint
+"""
 
 class Node:
     def __init__(self, n):
@@ -28,7 +33,7 @@ class Node:
 
 class LQRrrtStar:
     def __init__(self, x_start, x_goal, step_len,
-                 goal_sample_rate, search_radius, iter_max,AdSamplingFlag = False, solve_QP = True):
+                 goal_sample_rate, search_radius, iter_max, AdSamplingFlag = False, solve_QP = False):
         self.s_start = Node(x_start)
         self.s_goal = Node(x_goal)
         self.step_len = step_len
@@ -49,8 +54,7 @@ class LQRrrtStar:
         self.obs_rectangle = self.env.obs_rectangle
         self.obs_boundary = self.env.obs_boundary
 
-        self.lqr_planner = LQRPlanner()
-        self.LQR_Gain = dict()
+        self.mpc_planner = MPCplanner()
         self.solve_QP = solve_QP
 
         # The adaptive sampling attributes: 
@@ -62,6 +66,7 @@ class LQRrrtStar:
         self.initEliteSamples = []
         self.curr_Ldist = 0
         self.prev_Ldist = 0
+        self.trackElites = []
         #Reaching the optimal distribution params:
         #---kde
         self.kdeOpt_flag = False
@@ -74,6 +79,8 @@ class LQRrrtStar:
         self.pre_gridProbs = []
         self.SDF_optFlg = False
         self.N_qSamples = 200 
+        self.NadaptatoinTrajs = 70
+        self.bandwidth_adap = 1.5
         self.rho = .3
         self.step_size = 0.3
         self.plot_pdf_kde = True
@@ -93,7 +100,7 @@ class LQRrrtStar:
 
             if k % 1000 == 0:
                 print('rrtStar sampling iterations: ', k)
-                self.plotting.animation_online(self.vertex, "rrtStar", True)
+                self.plotting.animation_online(self.vertex, "rrtStar", False)
 
             if node_new and not self.utils.is_collision(node_near, node_new):
                 neighbor_index = self.find_near_neighbor(node_new)
@@ -108,9 +115,20 @@ class LQRrrtStar:
                 # Steering to the goal region: 
                 if node_new is None: 
                     continue
-                g_node = self.LQR_steer(node_new, self.s_goal, exact_steering = True)
-                if g_node is not None and not self.utils.is_collision(node_new, node_new):
-                    self.Vg_leaves.append(g_node)
+                r_num = np.random.uniform(0, 1) > 0.5
+                if r_num: 
+                    s_node_dap, g_node_adap = self.s_goal,node_new
+                else: 
+                    s_node_dap, g_node_adap = node_new, self.s_goal
+
+                g_node = self.LQR_steer(s_node_dap, g_node_adap, exact_steering = True)
+                if g_node is not None:
+                    if np.linalg.norm((g_node.x-g_node_adap.x,g_node.y-g_node_adap.y)) < 3.5 and not r_num:
+                        self.Vg_leaves.append(g_node)
+                    elif r_num and np.linalg.norm((g_node.x-g_node_adap.x,g_node.y-g_node_adap.y)) < 3.5: 
+                        g_node.cost = g_node.cost + g_node_adap.cost
+                        g_node.StateTraj = np.flip(g_node.StateTraj) 
+                        self.Vg_leaves.append(g_node)
             # <<< End extend to the goal
         
         index = self.search_goal_parent()
@@ -148,11 +166,9 @@ class LQRrrtStar:
         node_goal.x = node_start.x + dist * math.cos(theta)
         node_goal.y = node_start.y + dist * math.sin(theta)
 
+        wx, wy, _, _ = self.mpc_planner.MPC_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, solve_QP = self.solve_QP)
 
-        wx, wy, _, _, = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, self.LQR_Gain, show_animation=show_animation, solve_QP=self.solve_QP)
         px, py, traj_cost = self.sample_path(wx, wy)
-
-
 
         if len(wx) == 1:
             return None
@@ -164,12 +180,10 @@ class LQRrrtStar:
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
-        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, self.LQR_Gain, show_animation=False, cbf_check = cbf_check, solve_QP=self.solve_QP)
+        wx, wy, _, can_reach = self.mpc_planner.MPC_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, cbf_check = cbf_check, solve_QP = self.solve_QP)
         px, py, traj_cost = self.sample_path(wx, wy)
         if wx is None:
             return float('inf'), False
-        
-
         return node_start.cost + sum(abs(c) for c in traj_cost), can_reach
 
     def LQR_choose_parent(self, node_new, neighbor_index):
@@ -177,8 +191,7 @@ class LQRrrtStar:
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, self.LQR_Gain, show_animation=False, solve_QP=self.solve_QP)
-
+            _, _, _, can_reach = self.mpc_planner.MPC_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, solve_QP = self.solve_QP)
 
             if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
                 update_cost, _ = self.cal_LQR_new_cost(self.vertex[i], node_new)
@@ -241,15 +254,15 @@ class LQRrrtStar:
                             np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
 
             return copy.deepcopy(self.s_goal)
-        elif len(Vg_leaves) != 0 and not self.SDF_optFlg:
+        elif len(Vg_leaves) != 0 and not self.kdeOpt_flag:
             N_xSmpls = 200 
             # t_min = min([vg.curTime for vg in Vg_leaves]) # The fastest trajectory 
             # h = t_min/md 
             h = .5
             return self.CE_Sample(Vg_leaves,h,self.N_qSamples)
-        elif self.SDF_optFlg: # Sampling from the optimal SDF: 
-            xySmpl = self.OptSDF.sample()
-            return Node(xySmpl[0][0],xySmpl[0][1])
+        elif self.kdeOpt_flag: # Sampling from the optimal SDF: 
+            xySmpl = self.KDE_fitSamples.sample()
+            return Node((xySmpl[0][0],xySmpl[0][1]))
         else: 
             if np.random.random() > goal_sample_rate:
                 return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
@@ -267,23 +280,24 @@ class LQRrrtStar:
         :param N_qSamples: A threshold indicates the number of samples that are sufficient enough to be exploited (TODO (Doc): How to decide this number)
         :return: None: if the number of points of the discretized trajectories < N_qSamples, (x,y) samples from the estimated distribution
         """
-        if len(Vg_leaves)>=(self.adapIter*30): #The acceptable number of trajectories to adapat upon
+        if len(Vg_leaves)>=(self.adapIter*self.NadaptatoinTrajs): #The acceptable number of trajectories to adapat upon
             frakX = []
             #Find the elite trajectoies then discretize them and use their samples as the elite samples:
             Vg_leaves_costList = [vg.cost for vg in Vg_leaves]
             if (self.adapIter + 3) > 5: 
                 d_factor = 15
-            elif self.adapIter > 2:
-                d_factor = self.adapIter + 3
+            elif self.adapIter > 4:
+                d_factor = self.adapIter + 1
             else: 
                 d_factor = self.adapIter
             
-            q = self.rho               # The rho^th quantile  
+            q = self.rho/d_factor               # The rho^th quantile  
             cost_rhoth_q = np.quantile(Vg_leaves_costList, q=q)
             elite_Vg_leaves = [vg for vg in Vg_leaves if vg.cost <= cost_rhoth_q]
             if len(elite_Vg_leaves) == 0:
                 elite_Vg_leaves = Vg_leaves
-
+            # print("# of elites:", len(elite_Vg_leaves),"eliteCost:",cost_rhoth_q)
+            self.trackElites.append((len(elite_Vg_leaves),cost_rhoth_q))
             #XXXXXXX
             for vg in elite_Vg_leaves:
                 vgcost2come = vg.cost
@@ -299,12 +313,18 @@ class LQRrrtStar:
                 tStep_init1 = int(h/self.step_size)
                 tStep_init = 2
                 tStep = 10
-                tStep_temp = tStep_init1+3
+                tStep_temp = tStep_init1+6
+                pi_q_tStep_p = np.array([0,0])
                 while tStep < len(traj2vg[:,1]):
                     pi_q_tStep = traj2vg[tStep,:]
+                    if np.linalg.norm((pi_q_tStep[0]-pi_q_tStep_p[0],pi_q_tStep[1]-pi_q_tStep_p[1])) < 2: 
+                        tStep = tStep + tStep_temp
+                        continue
                     elite_cddtSample = [pi_q_tStep,vgcost2come] #This tuple contains the actual sample pi_q_tStep and the CostToCome to the goal of the corresponding trajectory
                     frakX.append(elite_cddtSample)
                     tStep = tStep + tStep_temp
+                    pi_q_tStep_p = pi_q_tStep
+
             if self.adapIter == 1:
                 frakX.extend(self.initEliteSamples)
             # XXXXXXX
@@ -348,15 +368,20 @@ class LQRrrtStar:
 
         #random point from the estimated distribution:
         if self.kde_enabled:#self.params.kde_enabled:
-            kde = KernelDensity(kernel='gaussian', bandwidth=.85)
+            if self.adapIter %2 ==0: 
+                bandwidth = self.bandwidth_adap 
+            else:
+                bandwidth = self.bandwidth_adap
+                # self.bandwidth_adap = bandwidth
+            kde = KernelDensity(kernel='gaussian', bandwidth=bandwidth)
             # kde.fit(elite_samples_arr,sample_weight=w_arrNorm)
             kde.fit(elite_samples_arr)
             self.adapIter += 1
             xySample = kde.sample()
 
         if self.kde_enabled:#self.params.kde_enabled:
-            x_gridv = np.linspace(-2, 18, 40)
-            y_gridv = np.linspace(-2, 18, 40)
+            x_gridv = np.linspace(self.x_range[0]-2, self.x_range[1], 60)
+            y_gridv = np.linspace(self.y_range[0]-2, self.y_range[1], 60)
             Xxgrid, Xygrid = np.meshgrid(x_gridv, y_gridv)
             XYgrid_mtx = np.array([Xxgrid.ravel(), Xygrid.ravel()]).T
             #Get the probabilities
@@ -367,8 +392,7 @@ class LQRrrtStar:
                 KL_div = self.KLdiv(grid_probs)
                 if KL_div < .1:
                     self.kdeOpt_flag = True
-                    
-                self.KDE_fitSamples = kde #This kde object will be used to sample form whn the optimal sampling distribution has been reached
+                    self.KDE_fitSamples = kde #This kde object will be used to sample form whn the optimal sampling distribution has been reached
 
             self.KDE_pre_gridProbs = grid_probs
             #Save the grid points with the corresponding probs, the cost, and the tree to plot them afterwards:
@@ -444,7 +468,7 @@ def main():
     x_goal = (30, 24)  # Goal node
 
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 2000, AdSamplingFlag = False)
+    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 2000,AdSamplingFlag=False)
     rrt_star.planning()
 
 

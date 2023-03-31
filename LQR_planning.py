@@ -59,7 +59,7 @@ class LQRPlanner:
             
             if solve_QP:
                 try:
-                    u = self.cbf_rrt_simulation.QP_controller(x, u, model="linear")
+                    u = self.cbf_rrt_simulation.QP_controller([x[0, 0] + gx, x[1, 0] + gy], u, model="linear")
                 except:
                     print('infeasible')
                     break
