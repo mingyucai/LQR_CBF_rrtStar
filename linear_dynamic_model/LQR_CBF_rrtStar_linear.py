@@ -138,8 +138,10 @@ class LQRrrtStar:
             return None
 
         self.path = self.extract_path(self.vertex[index])
-
-
+        
+        final_cost = self.path_cost(self.path)
+        print("optimal distance cost", final_cost)
+        
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
 
     def sample_path(self, wx, wy, step=0.2):
@@ -452,6 +454,16 @@ class LQRrrtStar:
         path.append([node.x, node.y])
 
         return path
+    
+    @staticmethod
+    def path_cost(path):
+        src = path[0]
+        cost = 0.0
+
+        for i in range(1, len(path)):
+            dest = path[i]
+            cost += math.hypot(dest[0] - src[0], dest[1] - src[1])
+        return cost
 
     @staticmethod
     def get_distance_and_angle(node_start, node_end):
