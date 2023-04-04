@@ -3,28 +3,17 @@ import sys
 import math
 import numpy as np
 
-import env, plotting, utils, Queue
+import env, plotting, utils, queue
 
-from LQR_control import LQRPlanner
-
-import time
-
-import copy
-
-"""
-RRT_star 2D
-@author: mingyu cai
-"""
 
 class Node:
     def __init__(self, n):
         self.x = n[0]
         self.y = n[1]
         self.parent = None
-        self.cost = 0
 
 
-class LQRrrtStar:
+class RrtStar:
     def __init__(self, x_start, x_goal, step_len,
                  goal_sample_rate, search_radius, iter_max):
         self.s_start = Node(x_start)
@@ -46,20 +35,11 @@ class LQRrrtStar:
         self.obs_rectangle = self.env.obs_rectangle
         self.obs_boundary = self.env.obs_boundary
 
-        self.lqr_planner = LQRPlanner()
-
     def planning(self):
-        start_time = time.time()
         for k in range(self.iter_max):
             node_rand = self.generate_random_node(self.goal_sample_rate)
             node_near = self.nearest_neighbor(self.vertex, node_rand)
-            node_new = self.LQR_steer(node_near, node_rand)
-
-
-            if k % 100 == 0:
-                print('rrtStar sampling iterations: ', k)
-                print('rrtStar 1000 iterations sampling time: ', time.time() - start_time)
-                start_time = time.time()
+            node_new = self.new_state(node_near, node_rand)
 
             if k % 2000 == 0:
                 print('rrtStar sampling iterations: ', k)
@@ -70,107 +50,53 @@ class LQRrrtStar:
                 self.vertex.append(node_new)
 
                 if neighbor_index:
-                    self.LQR_choose_parent(node_new, neighbor_index)
+                    self.choose_parent(node_new, neighbor_index)
                     self.rewire(node_new, neighbor_index)
 
         index = self.search_goal_parent()
-
-        if index is None:
-            print('No path found!')
-            return None
-
         self.path = self.extract_path(self.vertex[index])
 
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
 
-    def sample_path(self, wx, wy, step=0.2):
-        # smooth path
-        px, py, traj_costs = [], [], []
-
-        for i in range(len(wx) - 1):
-            for t in np.arange(0.0, 1.0, step):
-                px.append(t * wx[i+1] + (1.0 - t) * wx[i])
-                py.append(t * wy[i+1] + (1.0 - t) * wy[i])
-
-        dx, dy = np.diff(px), np.diff(py)
-        traj_costs = [math.sqrt(idx ** 2 + idy ** 2) for (idx, idy) in zip(dx, dy)]
-        return px, py, traj_costs
-
-    def LQR_steer(self, node_start, node_goal):
-        ##balance the distance of node_goal
+    def new_state(self, node_start, node_goal):
         dist, theta = self.get_distance_and_angle(node_start, node_goal)
+
         dist = min(self.step_len, dist)
-        node_goal.x = node_start.x + dist * math.cos(theta)
-        node_goal.y = node_start.y + dist * math.sin(theta)
+        node_new = Node((node_start.x + dist * math.cos(theta),
+                         node_start.y + dist * math.sin(theta)))
 
-        wx, wy, _, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False)
-        px, py, traj_cost = self.sample_path(wx, wy)
-
-        if wx is None:
-            return None
-        node_new = Node((wx[-1], wy[-1]))
         node_new.parent = node_start
-        # calculate cost of each new_node
-        node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost)
 
         return node_new
 
-    def cal_LQR_new_cost(self, node_start, node_goal):
-        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False)
-        px, py, traj_cost = self.sample_path(wx, wy)
-        if wx is None:
-            return float('inf'), False
-        return node_start.cost + sum(abs(c) for c in traj_cost), can_reach
-
-    def LQR_choose_parent(self, node_new, neighbor_index):
-        cost = []
-        for i in neighbor_index:
-
-            # check if neighbor_node can reach node_new
-            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False)
-
-            if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
-                update_cost, _ = self.cal_LQR_new_cost(self.vertex[i], node_new)
-                cost.append(update_cost)
-            else:
-                cost.append(float('inf'))
-        min_cost = min(cost)
-
-        if min_cost == float('inf'):
-            print('There is no good path.(min_cost is inf)')
-            return None
+    def choose_parent(self, node_new, neighbor_index):
+        cost = [self.get_new_cost(self.vertex[i], node_new) for i in neighbor_index]
 
         cost_min_index = neighbor_index[int(np.argmin(cost))]
         node_new.parent = self.vertex[cost_min_index]
-
 
     def rewire(self, node_new, neighbor_index):
         for i in neighbor_index:
             node_neighbor = self.vertex[i]
 
-            # check collision and LQR reachabilty
-            if not self.utils.is_collision(node_new, node_neighbor):
-                new_cost, can_rach = self.cal_LQR_new_cost(node_new, node_neighbor)
-
-                if can_rach and node_neighbor.cost > new_cost:
-                    node_neighbor.parent = node_new
-                    node_neighbor.cost = new_cost
-
+            if self.cost(node_neighbor) > self.get_new_cost(node_new, node_neighbor):
+                node_neighbor.parent = node_new
 
     def search_goal_parent(self):
         dist_list = [math.hypot(n.x - self.s_goal.x, n.y - self.s_goal.y) for n in self.vertex]
         node_index = [i for i in range(len(dist_list)) if dist_list[i] <= self.step_len]
 
-        if not node_index:
-            return None
-
         if len(node_index) > 0:
-            cost_list = [dist_list[i] + self.vertex[i].cost for i in node_index
+            cost_list = [dist_list[i] + self.cost(self.vertex[i]) for i in node_index
                          if not self.utils.is_collision(self.vertex[i], self.s_goal)]
             return node_index[int(np.argmin(cost_list))]
 
         return len(self.vertex) - 1
 
+    def get_new_cost(self, node_start, node_end):
+        dist, _ = self.get_distance_and_angle(node_start, node_end)
+
+        return self.cost(node_start) + dist
 
     def generate_random_node(self, goal_sample_rate):
         delta = self.utils.delta
@@ -179,7 +105,7 @@ class LQRrrtStar:
             return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
                          np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
 
-        return copy.deepcopy(self.s_goal)
+        return self.s_goal
 
     def find_near_neighbor(self, node_new):
         n = len(self.vertex) + 1
@@ -188,6 +114,7 @@ class LQRrrtStar:
         dist_table = [math.hypot(nd.x - node_new.x, nd.y - node_new.y) for nd in self.vertex]
         dist_table_index = [ind for ind in range(len(dist_table)) if dist_table[ind] <= r and
                             not self.utils.is_collision(node_new, self.vertex[ind])]
+
         return dist_table_index
 
     @staticmethod
@@ -195,6 +122,30 @@ class LQRrrtStar:
         return node_list[int(np.argmin([math.hypot(nd.x - n.x, nd.y - n.y)
                                         for nd in node_list]))]
 
+    @staticmethod
+    def cost(node_p):
+        node = node_p
+        cost = 0.0
+
+        while node.parent:
+            cost += math.hypot(node.x - node.parent.x, node.y - node.parent.y)
+            node = node.parent
+
+        return cost
+
+    def update_cost(self, parent_node):
+        OPEN = queue.QueueFIFO()
+        OPEN.put(parent_node)
+
+        while not OPEN.empty():
+            node = OPEN.get()
+
+            if len(node.child) == 0:
+                continue
+
+            for node_c in node.child:
+                node_c.Cost = self.get_new_cost(node, node_c)
+                OPEN.put(node_c)
 
     def extract_path(self, node_end):
         path = [[self.s_goal.x, self.s_goal.y]]
@@ -218,7 +169,7 @@ def main():
     x_start = (18, 8)  # Starting node
     x_goal = (37, 18)  # Goal node
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 6000)
+    rrt_star = RrtStar(x_start, x_goal, 10, 0.10, 20, 5000)
     rrt_star.planning()
 
 
