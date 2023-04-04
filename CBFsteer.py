@@ -257,7 +257,7 @@ class CBF_RRT:
                 x_current=x_current+delta_t*u_current
         return (x,u)
 
-    def QP_constraint(self,x_current, u_ref,system_type="linear_velocity_control"):
+    def QP_constraint(self, x_current, u_ref, system_type="linear_velocity_control"):
         if system_type == "linear_velocity_control":
             x1 = x_current[0]
             x2 = x_current[1]
