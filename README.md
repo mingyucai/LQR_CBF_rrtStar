@@ -10,6 +10,8 @@ To improve sampling efficiency, we employ the Cross-Entropy Method (CEM) for imp
 
 Under construction
 
+## Preview
+<img src="/figures/LQR-CBF_result.PNG?raw=true" width="800"/>
 
 ### Citing
 
