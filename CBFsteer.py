@@ -58,8 +58,8 @@ class CBF_RRT:
         # self.y0 = initial_state
         self.k = 6 # k nearest neighbor obstacles that will be used for generating CBF constraint
         self.cbf_constraints_sensing_radius = 20
-        self.k_cbf = 1.0 #CBF coefficient for double intergrators
-        self.k_cbf2 = 2.0 #CBF coefficient for double intergrators, If acceleration is used
+        self.k_cbf = 2.0 #CBF coefficient for double intergrators
+        self.k_cbf2 = 1.0 #CBF coefficient for double intergrators, If acceleration is used
         self.p_cbf = 1 #CBF constraint power
         self.k1_unicyle_cbf = 2.0 # CBF coefficient for unicycle
         self.k2_unicyle_cbf = 2.0 # CBF coefficient for unicycle
