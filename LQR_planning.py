@@ -40,7 +40,7 @@ class LQRPlanner:
         rx, ry = [sx], [sy]
 
         error = []
-
+        u_sequence = []
         x = np.array([sx - gx, sy - gy]).reshape(2, 1)  # State vector
 
         found_path = False
@@ -51,6 +51,7 @@ class LQRPlanner:
             time += self.DT
 
             u = self.K @ x
+            u_sequence.append(u)
 
             # check if LQR control is safe with respect to CBF constraint
             if cbf_check and not test_LQR and not solve_QP:
@@ -90,9 +91,9 @@ class LQRPlanner:
                 plt.pause(1.0)
 
         if not found_path:
-            return rx, ry, error,found_path
+            return rx, ry, error,found_path, u_sequence
 
-        return rx, ry, error,found_path
+        return rx, ry, error,found_path, u_sequence
 
 
     def dlqr(self, A,B,Q,R):
@@ -160,6 +161,7 @@ class LQRPlanner_acceleration:
         rx, ry, rvx, rvy = [sx], [sy], [svx], [svy]
 
         error = []
+        u_sequence = []
 
         x = np.array([sx - gx, sy - gy, svx - gvx, svy - gvy]).reshape(4, 1)  # State vector
 
@@ -171,6 +173,7 @@ class LQRPlanner_acceleration:
             time += self.DT
 
             u = self.K @ x
+            u_sequence.append(u)
 
             # check if LQR control is safe with respect to CBF constraint
             if cbf_check and not test_LQR:
@@ -208,9 +211,9 @@ class LQRPlanner_acceleration:
 
         if not found_path:
             #print("Cannot found path")
-            return rx, ry, error,found_path
+            return rx, ry, error,found_path, u_sequence
 
-        return rx, ry, error,found_path
+        return rx, ry, error,found_path, u_sequence
 
 
     def dlqr(self, A,B,Q,R):
@@ -270,11 +273,11 @@ def main():
         print("goal", gy, gx)
 
         if not acceleration_model:
-            rx, ry, error, foundpath = lqr_planner.lqr_planning(sx, sy, gx, gy, test_LQR = True, show_animation=SHOW_ANIMATION)
+            rx, ry, error, foundpath, u_sequence = lqr_planner.lqr_planning(sx, sy, gx, gy, test_LQR = True, show_animation=SHOW_ANIMATION)
         
         else:
             svx, svy, gvx, gvy = 0, 0, 0, 0
-            rx, ry, error, foundpath = lqr_planner.lqr_planning(sx, sy, svx, svy, gx, gy, gvx, gvy, test_LQR = True, show_animation=SHOW_ANIMATION)
+            rx, ry, error, foundpath, u_sequence = lqr_planner.lqr_planning(sx, sy, svx, svy, gx, gy, gvx, gvy, test_LQR = True, show_animation=SHOW_ANIMATION)
 
 
         f, (ax1, ax2) = plt.subplots(1, 2, sharey=True)
