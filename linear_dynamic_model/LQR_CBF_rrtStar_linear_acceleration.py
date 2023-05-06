@@ -26,6 +26,7 @@ class Node:
         self.parent = None
         self.cost = 0
         self.StateTraj = None
+        u_parent_to_current = None # Acceleration
         self.childrenNodeInds = set([])
 
 class LQRrrtStar:
@@ -150,7 +151,7 @@ class LQRrrtStar:
         node_goal.x = node_start.x + dist * math.cos(theta)
         node_goal.y = node_start.y + dist * math.sin(theta)
 
-        wx, wy, _, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=show_animation)
+        wx, wy, _, _, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=show_animation)
         px, py, traj_cost = self.sample_path(wx, wy)
 
         if len(wx) == 1:
@@ -159,36 +160,42 @@ class LQRrrtStar:
         node_new.parent = node_start
         # calculate cost of each new_node
         node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost)
-        node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling 
+        node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling
+        node_new.u_parent_to_current = u_sequence
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
-        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=False,cbf_check = cbf_check)
-        px, py, traj_cost = self.sample_path(wx, wy)
+        wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=False,cbf_check = cbf_check)
+        px, py, traj_cost = self.sample_path(wx, wy) # TO DO: update LQR cost
         if wx is None:
             return float('inf'), False
-        return node_start.cost + sum(abs(c) for c in traj_cost), can_reach
+        return node_start.cost + sum(abs(c) for c in traj_cost), can_reach, u_sequence
 
     def LQR_choose_parent(self, node_new, neighbor_index):
         cost = []
+        u_neighbor = []  # store u_sequence of neighbor nodes
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, self.vertex[i].vx, self.vertex[i].vy, node_new.x, node_new.y, node_new.vx, node_new.vy, show_animation=False)
+            _, _, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, self.vertex[i].vx, self.vertex[i].vy, node_new.x, node_new.y, node_new.vx, node_new.vy, show_animation=False)
 
             if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
-                update_cost, _ = self.cal_LQR_new_cost(self.vertex[i], node_new)
+                update_cost, _, u_sequence = self.cal_LQR_new_cost(self.vertex[i], node_new)
                 cost.append(update_cost)
+                u_neighbor.append(u_sequence)
             else:
                 cost.append(float('inf'))
+                u_neighbor.append(None)
         min_cost = min(cost)
 
         if min_cost == float('inf'):
             print('There is no good path.(min_cost is inf)')
             return None
 
-        cost_min_index = neighbor_index[int(np.argmin(cost))]
-        node_new.parent = self.vertex[cost_min_index] 
+        neighbor_index_with_minimum_cost = np.argmin(cost)
+        cost_min_index = neighbor_index[neighbor_index_with_minimum_cost]
+        node_new.parent = self.vertex[cost_min_index]
+        node_new.u_parent_to_current = u_neighbor[neighbor_index_with_minimum_cost]
         node_new.parent.childrenNodeInds.add(len(self.vertex)-1) # Add the index of node_new to the children of its parent. This step is essential when rewiring the tree to project the changes of the cost of the rewired node to its antecessors  
         
 
@@ -198,7 +205,7 @@ class LQRrrtStar:
 
             # check collision and LQR reachabilty
             if not self.utils.is_collision(node_new, node_neighbor):
-                new_cost, can_rach = self.cal_LQR_new_cost(node_new, node_neighbor)
+                new_cost, can_rach, u_sequence = self.cal_LQR_new_cost(node_new, node_neighbor)
 
                 if can_rach and node_neighbor.cost > new_cost:
                     node_neighbor.parent = node_new

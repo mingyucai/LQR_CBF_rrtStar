@@ -29,6 +29,7 @@ class Node:
         self.parent = None
         self.cost = 0
         self.StateTraj = None
+        self.u_parent_to_current = None # Velocity
         self.childrenNodeInds = set([])
 
 class LQRrrtStar:
@@ -43,6 +44,7 @@ class LQRrrtStar:
         self.iter_max = iter_max
         self.vertex = [self.s_start]
         self.path = []
+        self.u_path = [] # Open-loop control input
 
         self.env = env.Env()
         self.plotting = plotting.Plotting(x_start, x_goal)
@@ -137,16 +139,19 @@ class LQRrrtStar:
             print('No path found!')
             return None
 
-        self.path = self.extract_path(self.vertex[index])
+        self.path, self.u_path = self.extract_path(self.vertex[index])
         
         final_cost = self.path_cost(self.path)
         print("optimal distance cost", final_cost)
         
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
 
-    def sample_path(self, wx, wy, step=0.2):
+    def sample_path(self, wx, wy, u_sequence, step=0.2):
         # smooth path
         px, py, traj_costs = [], [], []
+
+        # Convert u_sequence with matrix form to list with float numbers
+        u_sequence_list = [[u_sequence[i].item(0, 0), u_sequence[i].item(1, 0)] for i in range(len(u_sequence))]
 
         for i in range(len(wx) - 1):
             for t in np.arange(0.0, 1.0, step):
@@ -154,8 +159,10 @@ class LQRrrtStar:
                 py.append(t * wy[i+1] + (1.0 - t) * wy[i])
 
         dx, dy = np.diff(px), np.diff(py)
+        u_sequence_cost = sum([np.linalg.norm(u) for u in u_sequence_list])
         traj_costs = [math.sqrt(idx ** 2 + idy ** 2) for (idx, idy) in zip(dx, dy)]
-        return px, py, traj_costs
+
+        return px, py, traj_costs, u_sequence_cost
 
     def LQR_steer(self, node_start, node_goal,exact_steering = False):
         ##balance the distance of node_goal
@@ -168,8 +175,8 @@ class LQRrrtStar:
         node_goal.x = node_start.x + dist * math.cos(theta)
         node_goal.y = node_start.y + dist * math.sin(theta)
 
-        wx, wy, _, _ = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=show_animation, solve_QP = self.solve_QP)
-        px, py, traj_cost = self.sample_path(wx, wy)
+        wx, wy, _, _, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=show_animation, solve_QP = self.solve_QP)
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence)
 
         if len(wx) == 1:
             return None
@@ -178,35 +185,41 @@ class LQRrrtStar:
         # calculate cost of each new_node
         node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost)
         node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling 
+        node_new.u_parent_to_current = u_sequence
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
-        wx, wy, _, can_reach = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False,cbf_check = cbf_check, solve_QP = self.solve_QP)
-        px, py, traj_cost = self.sample_path(wx, wy)
+        wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False,cbf_check = cbf_check, solve_QP = self.solve_QP)
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence)
         if wx is None:
             return float('inf'), False
-        return node_start.cost + sum(abs(c) for c in traj_cost), can_reach
+        return node_start.cost + sum(abs(c) for c in traj_cost) + u_sequence_cost, can_reach, u_sequence
 
     def LQR_choose_parent(self, node_new, neighbor_index):
         cost = []
+        u_neighbor = [] # store u_sequence of neighbor nodes
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, _, can_reach = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False, solve_QP = self.solve_QP)
+            _, _, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, node_new.x, node_new.y, show_animation=False, solve_QP = self.solve_QP)
 
             if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
-                update_cost, _ = self.cal_LQR_new_cost(self.vertex[i], node_new)
+                update_cost, _, u_sequence = self.cal_LQR_new_cost(self.vertex[i], node_new)
                 cost.append(update_cost)
+                u_neighbor.append(u_sequence)
             else:
                 cost.append(float('inf'))
+                u_neighbor.append(None)
         min_cost = min(cost)
 
         if min_cost == float('inf'):
             print('There is no good path.(min_cost is inf)')
             return None
 
-        cost_min_index = neighbor_index[int(np.argmin(cost))]
-        node_new.parent = self.vertex[cost_min_index] 
+        neighbor_index_with_minimum_cost = np.argmin(cost)
+        cost_min_index = neighbor_index[neighbor_index_with_minimum_cost]
+        node_new.parent = self.vertex[cost_min_index]
+        node_new.u_parent_to_current = u_neighbor[neighbor_index_with_minimum_cost]
         node_new.parent.childrenNodeInds.add(len(self.vertex)-1) # Add the index of node_new to the children of its parent. This step is essential when rewiring the tree to project the changes of the cost of the rewired node to its antecessors  
         
 
@@ -216,11 +229,13 @@ class LQRrrtStar:
 
             # check collision and LQR reachabilty
             if not self.utils.is_collision(node_new, node_neighbor):
-                new_cost, can_rach = self.cal_LQR_new_cost(node_new, node_neighbor)
+                new_cost, can_rach,u_sequence = self.cal_LQR_new_cost(node_new, node_neighbor)
 
                 if can_rach and node_neighbor.cost > new_cost:
                     node_neighbor.parent = node_new
                     node_neighbor.cost = new_cost
+                    # Rewiring update the control steers from node_new -> node_neighbor
+                    node_neighbor.u_parent_to_current = u_sequence
                     self.updateCosts(node_neighbor)
 
     def updateCosts(self,node):
@@ -446,14 +461,16 @@ class LQRrrtStar:
 
     def extract_path(self, node_end):
         path = [[self.s_goal.x, self.s_goal.y]]
+        u_path = []
         node = node_end
 
         while node.parent is not None:
             path.append([node.x, node.y])
+            u_path.extend(node.u_parent_to_current)
             node = node.parent
         path.append([node.x, node.y])
 
-        return path
+        return path, u_path[::-1]
     
     @staticmethod
     def path_cost(path):
