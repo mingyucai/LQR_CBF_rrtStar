@@ -44,6 +44,7 @@ class LQRrrtStar:
         self.iter_max = iter_max
         self.vertex = [self.s_start]
         self.path = []
+        self.u_path = [] # Open-loop control input
 
         self.env = env.Env()
         self.plotting = plotting.Plotting(x_start, x_goal)
@@ -138,16 +139,19 @@ class LQRrrtStar:
             print('No path found!')
             return None
 
-        self.path = self.extract_path(self.vertex[index])
+        self.path, self.u_path = self.extract_path(self.vertex[index])
         
         final_cost = self.path_cost(self.path)
         print("optimal distance cost", final_cost)
         
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
 
-    def sample_path(self, wx, wy, step=0.2):
+    def sample_path(self, wx, wy, u_sequence, step=0.2):
         # smooth path
         px, py, traj_costs = [], [], []
+
+        # Convert u_sequence with matrix form to list with float numbers
+        u_sequence_list = [[u_sequence[i].item(0, 0), u_sequence[i].item(1, 0)] for i in range(len(u_sequence))]
 
         for i in range(len(wx) - 1):
             for t in np.arange(0.0, 1.0, step):
@@ -155,8 +159,10 @@ class LQRrrtStar:
                 py.append(t * wy[i+1] + (1.0 - t) * wy[i])
 
         dx, dy = np.diff(px), np.diff(py)
+        u_sequence_cost = sum([np.linalg.norm(u) for u in u_sequence_list])
         traj_costs = [math.sqrt(idx ** 2 + idy ** 2) for (idx, idy) in zip(dx, dy)]
-        return px, py, traj_costs
+
+        return px, py, traj_costs, u_sequence_cost
 
     def LQR_steer(self, node_start, node_goal,exact_steering = False):
         ##balance the distance of node_goal
@@ -170,7 +176,7 @@ class LQRrrtStar:
         node_goal.y = node_start.y + dist * math.sin(theta)
 
         wx, wy, _, _, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=show_animation, solve_QP = self.solve_QP)
-        px, py, traj_cost = self.sample_path(wx, wy)
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence)
 
         if len(wx) == 1:
             return None
@@ -184,10 +190,10 @@ class LQRrrtStar:
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
         wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_goal.x, node_goal.y, show_animation=False,cbf_check = cbf_check, solve_QP = self.solve_QP)
-        px, py, traj_cost = self.sample_path(wx, wy)
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence)
         if wx is None:
             return float('inf'), False
-        return node_start.cost + sum(abs(c) for c in traj_cost), can_reach, u_sequence
+        return node_start.cost + sum(abs(c) for c in traj_cost) + u_sequence_cost, can_reach, u_sequence
 
     def LQR_choose_parent(self, node_new, neighbor_index):
         cost = []
@@ -455,14 +461,16 @@ class LQRrrtStar:
 
     def extract_path(self, node_end):
         path = [[self.s_goal.x, self.s_goal.y]]
+        u_path = []
         node = node_end
 
         while node.parent is not None:
             path.append([node.x, node.y])
+            u_path.extend(node.u_parent_to_current)
             node = node.parent
         path.append([node.x, node.y])
 
-        return path
+        return path, u_path[::-1]
     
     @staticmethod
     def path_cost(path):
