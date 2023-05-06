@@ -126,9 +126,12 @@ class LQRrrtStar:
 
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
 
-    def sample_path(self, wx, wy, step=0.2):
+    def sample_path(self, wx, wy, u_sequence, step=0.2):
         # smooth path
         px, py, traj_costs = [], [], []
+
+        # Convert u_sequence with matrix form to list with float numbers
+        u_sequence_list = [[u_sequence[i].item(0, 0), u_sequence[i].item(1, 0)] for i in range(len(u_sequence))]
 
         for i in range(len(wx) - 1):
             for t in np.arange(0.0, 1.0, step):
@@ -136,8 +139,9 @@ class LQRrrtStar:
                 py.append(t * wy[i+1] + (1.0 - t) * wy[i])
 
         dx, dy = np.diff(px), np.diff(py)
+        u_sequence_cost = sum([np.linalg.norm(u) for u in u_sequence_list])
         traj_costs = [math.sqrt(idx ** 2 + idy ** 2) for (idx, idy) in zip(dx, dy)]
-        return px, py, traj_costs
+        return px, py, traj_costs, u_sequence_cost
     
 
     def LQR_steer(self, node_start, node_goal,exact_steering = False):
@@ -152,24 +156,24 @@ class LQRrrtStar:
         node_goal.y = node_start.y + dist * math.sin(theta)
 
         wx, wy, _, _, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=show_animation)
-        px, py, traj_cost = self.sample_path(wx, wy)
+        px, py, traj_cost,u_sequence_cost = self.sample_path(wx, wy, u_sequence)
 
         if len(wx) == 1:
             return None
         node_new = Node((wx[-1], wy[-1]))
         node_new.parent = node_start
         # calculate cost of each new_node
-        node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost)
+        node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost) + u_sequence_cost
         node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling
         node_new.u_parent_to_current = u_sequence
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
         wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=False,cbf_check = cbf_check)
-        px, py, traj_cost = self.sample_path(wx, wy) # TO DO: update LQR cost
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence) # TO DO: update LQR cost
         if wx is None:
             return float('inf'), False
-        return node_start.cost + sum(abs(c) for c in traj_cost), can_reach, u_sequence
+        return node_start.cost + sum(abs(c) for c in traj_cost)+u_sequence_cost, can_reach, u_sequence
 
     def LQR_choose_parent(self, node_new, neighbor_index):
         cost = []

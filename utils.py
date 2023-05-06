@@ -122,3 +122,16 @@ class Utils:
     @staticmethod
     def get_dist(start, end):
         return math.hypot(end.x - start.x, end.y - start.y)
+    @staticmethod
+    def integrate_single_integrator(self, x_init, u, dt):
+        # dimension 2, position [x1,x2]^T, control u = [u1,u2]^T, dt comes from control updates
+        x_traj = np.zeros((2, 0))
+        x_traj = np.hstack((x_traj, x_init))
+        x_current = x_init
+        num_steps = len(u)
+
+        for i in range(num_steps):
+            x_traj = np.hstack((x_traj, x_current))
+            u_current = u[:, i]
+            x_current = x_current + dt * u_current
+        return x_traj

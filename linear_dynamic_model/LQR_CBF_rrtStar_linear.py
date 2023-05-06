@@ -183,7 +183,7 @@ class LQRrrtStar:
         node_new = Node((wx[-1], wy[-1]))
         node_new.parent = node_start
         # calculate cost of each new_node
-        node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost)
+        node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost) + u_sequence_cost
         node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling 
         node_new.u_parent_to_current = u_sequence
         return node_new
