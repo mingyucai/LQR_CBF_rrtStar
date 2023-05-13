@@ -26,7 +26,7 @@ class Node:
         self.parent = None
         self.cost = 0
         self.StateTraj = None
-        u_parent_to_current = None # Acceleration
+        self.u_parent_to_current = None # Acceleration
         self.childrenNodeInds = set([])
 
 class LQRrrtStar:
@@ -34,6 +34,7 @@ class LQRrrtStar:
                  goal_sample_rate, search_radius, iter_max,AdSamplingFlag = False):
         self.s_start = Node(x_start)
         self.s_goal = Node(x_goal)
+        self.start_state = x_start
         self.step_len = step_len
         self.goal_len = 8
         self.goal_sample_rate = goal_sample_rate
@@ -69,7 +70,7 @@ class LQRrrtStar:
         self.kde_eliteSamples = []
         self.KDE_fitSamples = None
         self.KDE_pre_gridProbs = None
-        self.kde_enabled = True
+        self.kde_enabled = False
         #Elite samples and CE computation att
         self.len_frakX = 0
         self.pre_gridProbs = []
@@ -77,7 +78,7 @@ class LQRrrtStar:
         self.N_qSamples = 200 
         self.rho = .3
         self.step_size = 0.3
-        self.plot_pdf_kde = True
+        self.plot_pdf_kde = False
 
     def planning(self):
         start_time = time.time()
@@ -85,8 +86,6 @@ class LQRrrtStar:
             node_rand = self.generate_random_node(self.goal_sample_rate)
             node_near = self.nearest_neighbor(self.vertex, node_rand)
             node_new = self.LQR_steer(node_near, node_rand)
-
-
 
             if k % 100 == 0:
                 print('rrtStar sampling iterations: ', k)
@@ -103,14 +102,14 @@ class LQRrrtStar:
 
                 if neighbor_index:
                     self.LQR_choose_parent(node_new, neighbor_index)
-                    self.rewire(node_new, neighbor_index)
+                    #self.rewire(node_new, neighbor_index) #Disable rewire for now
             
             # >>> Extend to the goal 
             if self.AdSamplingFlag: 
                 # Steering to the goal region: 
                 if node_new is None: 
                     continue
-                g_node = self.LQR_steer(node_new, self.s_goal, exact_steering = True)
+                g_node = self.LQR_steer(node_new, self.s_goal, exact_steering = False)
                 if g_node is not None and not self.utils.is_collision(node_new, node_new):
                     self.Vg_leaves.append(g_node)
             # <<< End extend to the goal
@@ -121,14 +120,26 @@ class LQRrrtStar:
             print('No path found!')
             return None
 
-        self.path = self.extract_path(self.vertex[index])
+        self.path, control_path_list = self.extract_path(self.vertex[index])
+        #self.save_state_and_control_trajectory_as_numpy(control_path_list)
 
 
+        simulated_state_traj = self.utils.integrate_double_integrator(x_init=np.array([self.start_state[0],
+                                                                                       0,
+                                                                                       self.start_state[1],
+                                                                                       0]),
+                                                                                       u=control_path_list, dt=0.05)
+        plt.plot(simulated_state_traj[:, 0], simulated_state_traj[:, 2], 'r--')
+        plt.xlim([self.x_range[0], self.x_range[1]])
+        plt.ylim([self.y_range[0], self.y_range[1]])
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
 
-    def sample_path(self, wx, wy, step=0.2):
+    def sample_path(self, wx, wy, u_sequence, step=0.2):
         # smooth path
         px, py, traj_costs = [], [], []
+
+        # Convert u_sequence with matrix form to list with float numbers
+        u_sequence_list = [[u_sequence[i].item(0, 0), u_sequence[i].item(1, 0)] for i in range(len(u_sequence))]
 
         for i in range(len(wx) - 1):
             for t in np.arange(0.0, 1.0, step):
@@ -136,8 +147,9 @@ class LQRrrtStar:
                 py.append(t * wy[i+1] + (1.0 - t) * wy[i])
 
         dx, dy = np.diff(px), np.diff(py)
+        u_sequence_cost = sum([np.linalg.norm(u) for u in u_sequence_list])
         traj_costs = [math.sqrt(idx ** 2 + idy ** 2) for (idx, idy) in zip(dx, dy)]
-        return px, py, traj_costs
+        return px, py, traj_costs, u_sequence_cost
     
 
     def LQR_steer(self, node_start, node_goal,exact_steering = False):
@@ -151,25 +163,29 @@ class LQRrrtStar:
         node_goal.x = node_start.x + dist * math.cos(theta)
         node_goal.y = node_start.y + dist * math.sin(theta)
 
-        wx, wy, _, _, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=show_animation)
-        px, py, traj_cost = self.sample_path(wx, wy)
+        wx, wy, _, _, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx,
+                                                                 node_start.vy, node_goal.x, node_goal.y,
+                                                                 node_goal.vx, node_goal.vy,
+                                                                 show_animation=show_animation,cbf_check=True)
+
+        px, py, traj_cost,u_sequence_cost = self.sample_path(wx, wy, u_sequence)
 
         if len(wx) == 1:
             return None
         node_new = Node((wx[-1], wy[-1]))
         node_new.parent = node_start
         # calculate cost of each new_node
-        node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost)
+        node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost) + u_sequence_cost
         node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling
         node_new.u_parent_to_current = u_sequence
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
         wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=False,cbf_check = cbf_check)
-        px, py, traj_cost = self.sample_path(wx, wy) # TO DO: update LQR cost
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence) # TO DO: update LQR cost
         if wx is None:
             return float('inf'), False
-        return node_start.cost + sum(abs(c) for c in traj_cost), can_reach, u_sequence
+        return node_start.cost + sum(abs(c) for c in traj_cost)+u_sequence_cost, can_reach, u_sequence
 
     def LQR_choose_parent(self, node_new, neighbor_index):
         cost = []
@@ -181,6 +197,7 @@ class LQRrrtStar:
 
             if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
                 update_cost, _, u_sequence = self.cal_LQR_new_cost(self.vertex[i], node_new)
+                u_sequence.reverse()
                 cost.append(update_cost)
                 u_neighbor.append(u_sequence)
             else:
@@ -210,11 +227,12 @@ class LQRrrtStar:
                 if can_rach and node_neighbor.cost > new_cost:
                     node_neighbor.parent = node_new
                     node_neighbor.cost = new_cost
+                    node_neighbor.u_parent_to_current = u_sequence
                     self.updateCosts(node_neighbor)
 
     def updateCosts(self,node):
         for ich in node.childrenNodeInds: 
-            self.vertex[ich].cost = self.cal_LQR_new_cost(node,self.vertex[ich],cbf_check = False)[0] # FIXME since we already know that this path is safe, we only need to compute the cost 
+            self.vertex[ich].cost = self.cal_LQR_new_cost(node,self.vertex[ich],cbf_check = False)[0]
             self.updateCosts(self.vertex[ich])
             
 
@@ -424,14 +442,19 @@ class LQRrrtStar:
 
     def extract_path(self, node_end):
         path = [[self.s_goal.x, self.s_goal.y]]
+        u_path = []
         node = node_end
 
         while node.parent is not None:
             path.append([node.x, node.y])
+            u_path.extend(node.u_parent_to_current)
             node = node.parent
         path.append([node.x, node.y])
 
-        return path
+        u_path_list = [[u_path[i].item(0, 0), u_path[i].item(1, 0)] for i in range(len(u_path))]
+        u_path_list.reverse()
+
+        return path, u_path_list
 
     @staticmethod
     def get_distance_and_angle(node_start, node_end):
@@ -439,15 +462,21 @@ class LQRrrtStar:
         dy = node_end.y - node_start.y
         return math.hypot(dx, dy), math.atan2(dy, dx)
 
+    def save_state_and_control_trajectory_as_numpy(self, control_list):
+        os_path_for_state = os.path.join('linear_dynamic_model', 'output_state_control_trajs','state_double_intergrator_traj.npy')
+        os_path_for_control = os.path.join('linear_dynamic_model', 'output_state_control_trajs', 'control_double_intergrator_traj.npy')
+        print("Saving state and control trajectory...")
+        np.save(os_path_for_control, np.array(control_list))
+        print("Complete.")
 
 def main():
     # x_start = (18, 8)  # Starting node
     # x_goal = (37, 18)  # Goal node
-    x_start = (2, 2)  # Starting node
-    x_goal = (30, 24)  # Goal node
+    x_start = (2.0, 2.0)  # Starting node
+    x_goal = (30.0, 24.0)  # Goal node
 
 
-    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 3000, AdSamplingFlag = False)
+    rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 500, AdSamplingFlag = False)
     rrt_star.planning()
 
 

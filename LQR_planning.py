@@ -33,7 +33,7 @@ class LQRPlanner:
 
         self.cbf_rrt_simulation = CBF_RRT(self.obs_circle)
 
-    def lqr_planning(self, sx, sy, gx, gy, test_LQR = False, show_animation = True, cbf_check = True, solve_QP = True):
+    def lqr_planning(self, sx, sy, gx, gy, test_LQR = False, show_animation = True, cbf_check = True, solve_QP = False):
 
         self.cbf_rrt_simulation.set_initial_state(np.array([[sx],[sy]]))
 
@@ -51,12 +51,15 @@ class LQRPlanner:
             time += self.DT
 
             u = self.K @ x
-            u_sequence.append(u)
+
 
             # check if LQR control is safe with respect to CBF constraint
             if cbf_check and not test_LQR and not solve_QP:
                 if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy],u):
+                    print('CBF constraint violated')
                     break
+
+            u_sequence.append(u)
             
             if solve_QP:
                 try:
@@ -133,7 +136,6 @@ class LQRPlanner:
 
 
 class LQRPlanner_acceleration:
-
     def __init__(self):
         self.MAX_TIME = 100.0  # Maximum simulation time
         self.DT = 0.05  # Time tick
@@ -173,15 +175,17 @@ class LQRPlanner_acceleration:
             time += self.DT
 
             u = self.K @ x
-            u_sequence.append(u)
+
 
             # check if LQR control is safe with respect to CBF constraint
             if cbf_check and not test_LQR:
 
                 if not self.cbf_rrt_simulation.QP_constraint([x[0, 0] + gx, x[1, 0] + gy, x[2, 0] + gvx, x[3, 0] + gvy], u, system_type = "linear_acceleration_control"):
-                    # print("violation")
+                    print("violation")
                     # exit(0)
                     break
+
+            u_sequence.append(u)
 
 
             x = self.A @ x + self.B @ u
@@ -304,5 +308,4 @@ def main():
 
 
 if __name__ == '__main__':
-
     main()

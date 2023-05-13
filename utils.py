@@ -122,3 +122,34 @@ class Utils:
     @staticmethod
     def get_dist(start, end):
         return math.hypot(end.x - start.x, end.y - start.y)
+    @staticmethod
+    def integrate_single_integrator(self, x_init, u, dt):
+        # dimension 2, position [x1,x2]^T, control u = [u1,u2]^T, dt comes from control updates
+        x_traj = np.array([x_init])
+        x_current = x_traj.copy()
+        num_steps = len(u)
+
+        for i in range(num_steps):
+            u_current = u[i]
+            x_current[0, 0] = x_current[0, 1] + dt * u_current[0]
+            x_current[0, 1] = x_current[0, 1] + dt * u_current[1]
+            x_traj = np.concatenate((x_traj, x_current), axis=0)
+        return x_traj
+
+
+    @staticmethod
+    def integrate_double_integrator(x_init, u, dt):
+        # dimension 4, [x1,x2,x3,x4]^T [pos_1, vel_1, pos_2, vel_2]^T, control u = [u1,u2]^T, dt comes from control updates
+        x_traj = np.array([x_init],dtype=np.float32)
+        x_current = x_traj.copy()
+        num_steps = len(u)
+
+        for i in range(num_steps):
+            u_current = u[i]
+            x_current[0,0] = x_current[0,0] + x_current[0,1] * dt + 0.5 * u_current[0] * dt ** 2
+            x_current[0,1] = x_current[0,1] + dt * u_current[0]
+            x_current[0,2] = x_current[0,2] + x_current[0,3] * dt + 0.5 * u_current[1] * dt ** 2
+            x_current[0,3] = x_current[0,3] + dt * u_current[1]
+            x_traj = np.concatenate((x_traj, x_current), axis=0)
+
+        return x_traj
