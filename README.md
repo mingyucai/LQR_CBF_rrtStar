@@ -6,9 +6,10 @@ In this project, we propose a novel motion planning framework that combines samp
 
 To improve sampling efficiency, we employ the Cross-Entropy Method (CEM) for importance sampling (IS) to sample configurations that will enhance the path with higher probability and store computed optimal gain matrices in a hash table to avoid re-computation during rewiring procedure. We demonstrate the effectiveness of our method on nonlinear control affine systems in simulation.
 
+
 ## Document
 
-Under construction
+The code was tested on Mac OS 13.4 with Python 3.10.0. the required packages are listed in requirements.txt. 
 
 ## Preview
 <img src="/figures/LQR-CBF_result.PNG?raw=true" width="800"/>
@@ -32,7 +33,7 @@ cd into linear/nonlinear_dynamic_model
 ```
 python LQR_CBF_rrtStar_..py
 ```
-This allows to identify the performance for both linear and nonlineary systems
+This allows to identify the performance for both linear and non-linear systems.
 
 
 ## Q/A Contact and Contributors

@@ -26,6 +26,7 @@ class Node:
         self.parent = None
         self.cost = 0
         self.StateTraj = None
+        self.state_parent_to_current = None # State
         self.u_parent_to_current = None # Acceleration
         self.childrenNodeInds = set([])
 
@@ -102,7 +103,7 @@ class LQRrrtStar:
 
                 if neighbor_index:
                     self.LQR_choose_parent(node_new, neighbor_index)
-                    #self.rewire(node_new, neighbor_index) #Disable rewire for now
+                    #self.rewire(node_new, neighbor_index)
             
             # >>> Extend to the goal 
             if self.AdSamplingFlag: 
@@ -120,15 +121,17 @@ class LQRrrtStar:
             print('No path found!')
             return None
 
-        self.path, control_path_list = self.extract_path(self.vertex[index])
-        #self.save_state_and_control_trajectory_as_numpy(control_path_list)
+        path_continuous, self.path, control_path_list = self.extract_path(self.vertex[index])
+        self.save_state_and_control_trajectory_as_numpy(path_continuous, control_path_list)
 
 
+        # For visualizing if the state trajectory is correct through open-loop control
         simulated_state_traj = self.utils.integrate_double_integrator(x_init=np.array([self.start_state[0],
                                                                                        0,
                                                                                        self.start_state[1],
                                                                                        0]),
                                                                                        u=control_path_list, dt=0.05)
+        plt.title("State trajectory via Open-loop control")
         plt.plot(simulated_state_traj[:, 0], simulated_state_traj[:, 2], 'r--')
         plt.xlim([self.x_range[0], self.x_range[1]])
         plt.ylim([self.y_range[0], self.y_range[1]])
@@ -168,15 +171,18 @@ class LQRrrtStar:
                                                                  node_goal.vx, node_goal.vy,
                                                                  show_animation=show_animation,cbf_check=True)
 
-        px, py, traj_cost,u_sequence_cost = self.sample_path(wx, wy, u_sequence)
+        # This is for adapative sampling
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence)
 
         if len(wx) == 1:
             return None
         node_new = Node((wx[-1], wy[-1]))
+
         node_new.parent = node_start
         # calculate cost of each new_node
         node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost) + u_sequence_cost
         node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling
+        node_new.state_parent_to_current = [wx, wy]
         node_new.u_parent_to_current = u_sequence
         return node_new
 
@@ -225,6 +231,7 @@ class LQRrrtStar:
                 new_cost, can_rach, u_sequence = self.cal_LQR_new_cost(node_new, node_neighbor)
 
                 if can_rach and node_neighbor.cost > new_cost:
+                    u_sequence.reverse()
                     node_neighbor.parent = node_new
                     node_neighbor.cost = new_cost
                     node_neighbor.u_parent_to_current = u_sequence
@@ -234,7 +241,6 @@ class LQRrrtStar:
         for ich in node.childrenNodeInds: 
             self.vertex[ich].cost = self.cal_LQR_new_cost(node,self.vertex[ich],cbf_check = False)[0]
             self.updateCosts(self.vertex[ich])
-            
 
     def search_goal_parent(self):
         dist_list = [math.hypot(n.x - self.s_goal.x, n.y - self.s_goal.y) for n in self.vertex]
@@ -392,15 +398,6 @@ class LQRrrtStar:
                 self.KDE_fitSamples = kde #This kde object will be used to sample form whn the optimal sampling distribution has been reached
 
             self.KDE_pre_gridProbs = grid_probs
-            #Save the grid points with the corresponding probs, the cost, and the tree to plot them afterwards:
-            # saveData(self.goal_costToCome_list, 'adapCBF_RRTstr_Cost', suffix=self.suffix, CBF_RRT_strr_obj=self,
-            #          adapDist_iter=self.adapIter-1, enFlag=False)
-
-            # saveData([self.TreeT,self.vg_minCostToCome_list], 'adapCBF_RRTstr_Tree_CDC', suffix=self.suffix, CBF_RRT_strr_obj=self,
-            #          adapDist_iter=self.adapIter - 1, enFlag=False)
-            # saveData([Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape),elite_samples_arr], 'adapCBF_RRTstr_KDEgridProbs_CDC',
-            #          suffix=self.suffix, CBF_RRT_strr_obj=self,
-            #          adapDist_iter=self.adapIter - 1, enFlag=False)
 
             #Plot the distribution
             if self.plot_pdf_kde:
@@ -442,19 +439,35 @@ class LQRrrtStar:
 
     def extract_path(self, node_end):
         path = [[self.s_goal.x, self.s_goal.y]]
+        path_continuous = []
+        path_continuous_formated = [[],[]]
         u_path = []
         node = node_end
 
         while node.parent is not None:
             path.append([node.x, node.y])
             u_path.extend(node.u_parent_to_current)
+            path_continuous.extend([node.state_parent_to_current[0], node.state_parent_to_current[1]])
             node = node.parent
         path.append([node.x, node.y])
 
+
         u_path_list = [[u_path[i].item(0, 0), u_path[i].item(1, 0)] for i in range(len(u_path))]
         u_path_list.reverse()
+        path_continuous.reverse()
 
-        return path, u_path_list
+
+        for i in range(len(path_continuous)):
+            if i % 2 == 0:
+                path_continuous_formated[0].extend(path_continuous[i])
+
+        for i in range(len(path_continuous)):
+            if i % 2 != 0:
+                path_continuous_formated[1].extend(path_continuous[i])
+
+
+
+        return path, path_continuous_formated, u_path_list
 
     @staticmethod
     def get_distance_and_angle(node_start, node_end):
@@ -462,11 +475,15 @@ class LQRrrtStar:
         dy = node_end.y - node_start.y
         return math.hypot(dx, dy), math.atan2(dy, dx)
 
-    def save_state_and_control_trajectory_as_numpy(self, control_list):
-        os_path_for_state = os.path.join('linear_dynamic_model', 'output_state_control_trajs','state_double_intergrator_traj.npy')
-        os_path_for_control = os.path.join('linear_dynamic_model', 'output_state_control_trajs', 'control_double_intergrator_traj.npy')
+    def save_state_and_control_trajectory_as_numpy(self, state_list, control_list):
+        cwd = os.getcwd()
+        os_path_for_state = os.path.join(cwd, 'output_state_control_trajs',
+                                         'state_double_intergrator_traj.npy')
+        os_path_for_control = os.path.join(cwd, 'output_state_control_trajs',
+                                           'control_double_intergrator_traj.npy')
         print("Saving state and control trajectory...")
         np.save(os_path_for_control, np.array(control_list))
+        np.save(os_path_for_state, np.array(state_list))
         print("Complete.")
 
 def main():
