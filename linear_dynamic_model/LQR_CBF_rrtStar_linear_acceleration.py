@@ -42,7 +42,7 @@ class LQRrrtStar:
         self.search_radius = search_radius
         self.iter_max = iter_max
         self.vertex = [self.s_start]
-        self.path = []
+
 
         self.env = env.Env()
         self.plotting = plotting.Plotting(x_start, x_goal)
@@ -121,8 +121,8 @@ class LQRrrtStar:
             print('No path found!')
             return None
 
-        path_continuous, self.path, control_path_list = self.extract_path(self.vertex[index])
-        self.save_state_and_control_trajectory_as_numpy(path_continuous, control_path_list)
+        self.path, path_continuous, control_path_list = self.extract_path(self.vertex[index])
+        self.save_state_and_control_trajectory_as_numpy(self.path, control_path_list)
 
 
         # For visualizing if the state trajectory is correct through open-loop control
@@ -451,11 +451,10 @@ class LQRrrtStar:
             node = node.parent
         path.append([node.x, node.y])
 
-
         u_path_list = [[u_path[i].item(0, 0), u_path[i].item(1, 0)] for i in range(len(u_path))]
         u_path_list.reverse()
         path_continuous.reverse()
-
+        path.reverse()
 
         for i in range(len(path_continuous)):
             if i % 2 == 0:
@@ -465,7 +464,10 @@ class LQRrrtStar:
             if i % 2 != 0:
                 path_continuous_formated[1].extend(path_continuous[i])
 
-
+        # Add dummy velocity profile
+        zero_vel_list = [0.0] * len(path_continuous_formated[1])
+        path_continuous_formated.insert(1, zero_vel_list)
+        path_continuous_formated.insert(3, zero_vel_list)
 
         return path, path_continuous_formated, u_path_list
 
@@ -478,10 +480,11 @@ class LQRrrtStar:
     def save_state_and_control_trajectory_as_numpy(self, state_list, control_list):
         cwd = os.getcwd()
         os_path_for_state = os.path.join(cwd, 'output_state_control_trajs',
-                                         'state_double_intergrator_traj.npy')
+                                         'state_double_integrator_traj.npy')
         os_path_for_control = os.path.join(cwd, 'output_state_control_trajs',
-                                           'control_double_intergrator_traj.npy')
+                                           'control_double_integrator_traj.npy')
         print("Saving state and control trajectory...")
+
         np.save(os_path_for_control, np.array(control_list))
         np.save(os_path_for_state, np.array(state_list))
         print("Complete.")
@@ -491,7 +494,6 @@ def main():
     # x_goal = (37, 18)  # Goal node
     x_start = (2.0, 2.0)  # Starting node
     x_goal = (30.0, 24.0)  # Goal node
-
 
     rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 500, AdSamplingFlag = False)
     rrt_star.planning()
