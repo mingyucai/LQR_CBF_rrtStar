@@ -4,6 +4,7 @@ import os
 import cvxpy
 import subprocess
 import glob
+import pathlib
 
 from Utilits.CubicSpline import cubic_spline_planner, spline_continuity
 from Utilits.utils import read_waypoints
@@ -249,7 +250,7 @@ if __name__ == "__main__":
     interpolated_dist = 0.2  # [m] distance between interpolated position state
     obstacles = [(15,10,2)] # Circular Obstacles [(x1,x3,radius)]
 
-    path_to_continuous_waypoints = os.getcwd()+"/Saved_continuous_waypoints/state_double_integrator_traj.npy"
+    path_to_continuous_waypoints = (pathlib.Path(__file__) / ".." / ".."/"linear_dynamic_model/output_state_control_trajs/state_double_integrator_traj.npy").resolve()
     waypoints = read_waypoints(path_to_continuous_waypoints)
 
     x_init = np.array([waypoints[0, 0], 0.0, waypoints[0, 1], 0.0])  # [p1,v1,p2,v2]
