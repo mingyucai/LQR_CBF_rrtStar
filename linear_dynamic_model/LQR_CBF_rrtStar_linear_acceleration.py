@@ -2,20 +2,16 @@ import os
 import sys
 import math
 import numpy as np
-import time
-import timeit
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KernelDensity
 
-
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
-import env, plotting, utils, Queue
+import env, plotting, utils
 from LQR_planning import LQRPlanner_acceleration
 
 import copy
 import time
-
 
 class Node:
     def __init__(self, n):
@@ -25,8 +21,8 @@ class Node:
         self.vy = 0
         self.parent = None
         self.cost = 0
-        self.StateTraj = None
-        self.state_parent_to_current = None # State
+        self.StateTraj = None # For CEM sampling
+        self.state_parent_to_current = None # State with interpolated points
         self.u_parent_to_current = None # Acceleration
         self.childrenNodeInds = set([])
 
@@ -103,7 +99,7 @@ class LQRrrtStar:
 
                 if neighbor_index:
                     self.LQR_choose_parent(node_new, neighbor_index)
-                    #self.rewire(node_new, neighbor_index)
+                    self.rewire(node_new, neighbor_index)
             
             # >>> Extend to the goal 
             if self.AdSamplingFlag: 
@@ -124,7 +120,8 @@ class LQRrrtStar:
         self.path, path_continuous, control_path_list = self.extract_path(self.vertex[index])
         self.save_state_and_control_trajectory_as_numpy(self.path, control_path_list)
 
-
+        '''
+        
         # For visualizing if the state trajectory is correct through open-loop control
         simulated_state_traj = self.utils.integrate_double_integrator(x_init=np.array([self.start_state[0],
                                                                                        0,
@@ -136,7 +133,7 @@ class LQRrrtStar:
         plt.xlim([self.x_range[0], self.x_range[1]])
         plt.ylim([self.y_range[0], self.y_range[1]])
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
-
+        '''
     def sample_path(self, wx, wy, u_sequence, step=0.2):
         # smooth path
         px, py, traj_costs = [], [], []
@@ -187,7 +184,10 @@ class LQRrrtStar:
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
-        wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=False,cbf_check = cbf_check)
+        wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx,
+                                                                         node_start.vy, node_goal.x, node_goal.y,
+                                                                         node_goal.vx, node_goal.vy,
+                                                                         show_animation=False,cbf_check = cbf_check)
         px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence) # TO DO: update LQR cost
         if wx is None:
             return float('inf'), False
@@ -199,9 +199,12 @@ class LQRrrtStar:
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, self.vertex[i].vx, self.vertex[i].vy, node_new.x, node_new.y, node_new.vx, node_new.vy, show_animation=False)
+            _, _, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y,
+                                                                           self.vertex[i].vx, self.vertex[i].vy,
+                                                                           node_new.x, node_new.y, node_new.vx,
+                                                                           node_new.vy, show_animation=False)
 
-            if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
+            if can_reach and not self.utils.is_collision(self.vertex[i], node_new):
                 update_cost, _, u_sequence = self.cal_LQR_new_cost(self.vertex[i], node_new)
                 u_sequence.reverse()
                 cost.append(update_cost)
@@ -219,7 +222,9 @@ class LQRrrtStar:
         cost_min_index = neighbor_index[neighbor_index_with_minimum_cost]
         node_new.parent = self.vertex[cost_min_index]
         node_new.u_parent_to_current = u_neighbor[neighbor_index_with_minimum_cost]
-        node_new.parent.childrenNodeInds.add(len(self.vertex)-1) # Add the index of node_new to the children of its parent. This step is essential when rewiring the tree to project the changes of the cost of the rewired node to its antecessors  
+        # Add the index of node_new to the children of its parent. This step is essential when rewiring the tree to
+        # project the changes of the cost of the rewired node to its antecessors
+        node_new.parent.childrenNodeInds.add(len(self.vertex)-1)
         
 
     def rewire(self, node_new, neighbor_index):
@@ -262,7 +267,7 @@ class LQRrrtStar:
         adap_flag=self.AdSamplingFlag
         u_rand = np.random.uniform(0, 1)
         Vg_leaves = self.Vg_leaves
-        if not adap_flag or (u_rand > rce and len(Vg_leaves)==0): # Uniform sampling form the workspace: 
+        if not adap_flag or (u_rand > rce and len(Vg_leaves) == 0): # Uniform sampling form the workspace:
             if np.random.random() > goal_sample_rate:
                 return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
                             np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
@@ -285,14 +290,18 @@ class LQRrrtStar:
 
     def CE_Sample(self,Vg_leaves,h,N_qSamples):
         """
-        Exploit the samples of trajectories that reach the goal to adapt the sampling distribution towards the distribution of the rare event.
-        The trajectories that reach the goal will be disceretized to extract the elite samples that will be used to adapt (optimize)
+        Exploit the samples of trajectories that reach the goal to adapt the sampling distribution towards
+        the distribution of the rare event.
+        The trajectories that reach the goal will be disceretized to extract the elite samples that will be
+        used to adapt (optimize)
         the sampling distribution.
 
         :param Vg_leaves:
         :param h: The time step to discretize the trajectories
-        :param N_qSamples: A threshold indicates the number of samples that are sufficient enough to be exploited (TODO (Doc): How to decide this number)
-        :return: None: if the number of points of the discretized trajectories < N_qSamples, (x,y) samples from the estimated distribution
+        :param N_qSamples: A threshold indicates the number of samples that are sufficient enough to be exploited
+        (TODO (Doc): How to decide this number)
+        :return: None: if the number of points of the discretized trajectories < N_qSamples, (x,y) samples from the
+        estimated distribution
         """
         if len(Vg_leaves)>=(self.adapIter*30): #The acceptable number of trajectories to adapat upon
             frakX = []
@@ -329,7 +338,8 @@ class LQRrrtStar:
                 tStep_temp = tStep_init1+3
                 while tStep < len(traj2vg[:,1]):
                     pi_q_tStep = traj2vg[tStep,:]
-                    elite_cddtSample = [pi_q_tStep,vgcost2come] #This tuple contains the actual sample pi_q_tStep and the CostToCome to the goal of the corresponding trajectory
+                    elite_cddtSample = [pi_q_tStep,vgcost2come] #This tuple contains the actual sample pi_q_tStep
+                    # and the CostToCome to the goal of the corresponding trajectory
                     frakX.append(elite_cddtSample)
                     tStep = tStep + tStep_temp
             if self.adapIter == 1:
@@ -351,13 +361,17 @@ class LQRrrtStar:
     #Density estimate, kernel density or GMM:
     def CE_KDE_Sampling(self,frakX):
         """
-        Fit the elite samples to Kernel density estimate (KDE) or a GMM to generate from; and generate an (x,y) sample from the estimated
-        distribution. Checks if the CE between the previous density estimate and the current one below some threshold. In the case
+        Fit the elite samples to Kernel density estimate (KDE) or a GMM to generate from; and generate an (x,y)
+        sample from the estimated
+        distribution. Checks if the CE between the previous density estimate and the current one below some threshold.
+        In the case
         of KDE the expectation similarity measure could be used instead on the CE.
 
         NOTE to Ahmad:
-        You're using the CE with the KDE because you have the logistic probes of the samples and you use them; however, for
-        Kernel based distributions the expectation similarity could be used as well. One might reformulate the CE framework
+        You're using the CE with the KDE because you have the logistic probes of the samples and you use them;
+        however, for
+        Kernel based distributions the expectation similarity could be used as well. One might reformulate the
+        CE framework
         in terms of nonparametric distributions.
 
         :param frakX: The elite set of samples with the corresponding trajectory cost.
@@ -395,14 +409,15 @@ class LQRrrtStar:
                 if KL_div < .1:
                     self.kdeOpt_flag = True
                     
-                self.KDE_fitSamples = kde #This kde object will be used to sample form whn the optimal sampling distribution has been reached
+                self.KDE_fitSamples = kde
 
             self.KDE_pre_gridProbs = grid_probs
 
             #Plot the distribution
             if self.plot_pdf_kde:
                 # self.initialize_graphPlot()
-                CS = plt.contour(Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape))  # , norm=LogNorm(vmin=4.18, vmax=267.1))
+                # , norm=LogNorm(vmin=4.18, vmax=267.1))
+                CS = plt.contour(Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape))
                 # plt.colorbar(CS, shrink=0.8, extend='both')
                 plt.scatter(elite_samples_arr[:, 0], elite_samples_arr[:, 1])
                 plt.show()
