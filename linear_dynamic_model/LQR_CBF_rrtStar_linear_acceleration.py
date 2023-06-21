@@ -2,20 +2,16 @@ import os
 import sys
 import math
 import numpy as np
-import time
-import timeit
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KernelDensity
 
-
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).parent.parent))
-import env, plotting, utils, Queue
+import env, plotting, utils
 from LQR_planning import LQRPlanner_acceleration
 
 import copy
 import time
-
 
 class Node:
     def __init__(self, n):
@@ -25,7 +21,8 @@ class Node:
         self.vy = 0
         self.parent = None
         self.cost = 0
-        self.StateTraj = None
+        self.StateTraj = None # For CEM sampling
+        self.state_parent_to_current = None # State with interpolated points
         self.u_parent_to_current = None # Acceleration
         self.childrenNodeInds = set([])
 
@@ -41,7 +38,7 @@ class LQRrrtStar:
         self.search_radius = search_radius
         self.iter_max = iter_max
         self.vertex = [self.s_start]
-        self.path = []
+
 
         self.env = env.Env()
         self.plotting = plotting.Plotting(x_start, x_goal)
@@ -102,7 +99,7 @@ class LQRrrtStar:
 
                 if neighbor_index:
                     self.LQR_choose_parent(node_new, neighbor_index)
-                    #self.rewire(node_new, neighbor_index) #Disable rewire for now
+                    self.rewire(node_new, neighbor_index)
             
             # >>> Extend to the goal 
             if self.AdSamplingFlag: 
@@ -120,20 +117,23 @@ class LQRrrtStar:
             print('No path found!')
             return None
 
-        self.path, control_path_list = self.extract_path(self.vertex[index])
-        #self.save_state_and_control_trajectory_as_numpy(control_path_list)
+        self.path, path_continuous, control_path_list = self.extract_path(self.vertex[index])
+        self.save_state_and_control_trajectory_as_numpy(self.path, control_path_list)
 
-
+        '''
+        
+        # For visualizing if the state trajectory is correct through open-loop control
         simulated_state_traj = self.utils.integrate_double_integrator(x_init=np.array([self.start_state[0],
                                                                                        0,
                                                                                        self.start_state[1],
                                                                                        0]),
                                                                                        u=control_path_list, dt=0.05)
+        plt.title("State trajectory via Open-loop control")
         plt.plot(simulated_state_traj[:, 0], simulated_state_traj[:, 2], 'r--')
         plt.xlim([self.x_range[0], self.x_range[1]])
         plt.ylim([self.y_range[0], self.y_range[1]])
         self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
-
+        '''
     def sample_path(self, wx, wy, u_sequence, step=0.2):
         # smooth path
         px, py, traj_costs = [], [], []
@@ -168,20 +168,26 @@ class LQRrrtStar:
                                                                  node_goal.vx, node_goal.vy,
                                                                  show_animation=show_animation,cbf_check=True)
 
-        px, py, traj_cost,u_sequence_cost = self.sample_path(wx, wy, u_sequence)
+        # This is for adapative sampling
+        px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence)
 
         if len(wx) == 1:
             return None
         node_new = Node((wx[-1], wy[-1]))
+
         node_new.parent = node_start
         # calculate cost of each new_node
         node_new.cost = node_start.cost + sum(abs(c) for c in traj_cost) + u_sequence_cost
         node_new.StateTraj = np.array([px,py]) # Will be needed for adaptive sampling
+        node_new.state_parent_to_current = [wx, wy]
         node_new.u_parent_to_current = u_sequence
         return node_new
 
     def cal_LQR_new_cost(self, node_start, node_goal,cbf_check = True):
-        wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx, node_start.vy, node_goal.x, node_goal.y, node_goal.vx, node_goal.vy, show_animation=False,cbf_check = cbf_check)
+        wx, wy, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(node_start.x, node_start.y, node_start.vx,
+                                                                         node_start.vy, node_goal.x, node_goal.y,
+                                                                         node_goal.vx, node_goal.vy,
+                                                                         show_animation=False,cbf_check = cbf_check)
         px, py, traj_cost, u_sequence_cost = self.sample_path(wx, wy, u_sequence) # TO DO: update LQR cost
         if wx is None:
             return float('inf'), False
@@ -193,9 +199,12 @@ class LQRrrtStar:
         for i in neighbor_index:
 
             # check if neighbor_node can reach node_new
-            _, _, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y, self.vertex[i].vx, self.vertex[i].vy, node_new.x, node_new.y, node_new.vx, node_new.vy, show_animation=False)
+            _, _, _, can_reach, u_sequence = self.lqr_planner.lqr_planning(self.vertex[i].x, self.vertex[i].y,
+                                                                           self.vertex[i].vx, self.vertex[i].vy,
+                                                                           node_new.x, node_new.y, node_new.vx,
+                                                                           node_new.vy, show_animation=False)
 
-            if can_reach and not self.utils.is_collision(self.vertex[i], node_new):  #collision check should be updated if using CBF
+            if can_reach and not self.utils.is_collision(self.vertex[i], node_new):
                 update_cost, _, u_sequence = self.cal_LQR_new_cost(self.vertex[i], node_new)
                 u_sequence.reverse()
                 cost.append(update_cost)
@@ -213,7 +222,9 @@ class LQRrrtStar:
         cost_min_index = neighbor_index[neighbor_index_with_minimum_cost]
         node_new.parent = self.vertex[cost_min_index]
         node_new.u_parent_to_current = u_neighbor[neighbor_index_with_minimum_cost]
-        node_new.parent.childrenNodeInds.add(len(self.vertex)-1) # Add the index of node_new to the children of its parent. This step is essential when rewiring the tree to project the changes of the cost of the rewired node to its antecessors  
+        # Add the index of node_new to the children of its parent. This step is essential when rewiring the tree to
+        # project the changes of the cost of the rewired node to its antecessors
+        node_new.parent.childrenNodeInds.add(len(self.vertex)-1)
         
 
     def rewire(self, node_new, neighbor_index):
@@ -225,6 +236,7 @@ class LQRrrtStar:
                 new_cost, can_rach, u_sequence = self.cal_LQR_new_cost(node_new, node_neighbor)
 
                 if can_rach and node_neighbor.cost > new_cost:
+                    u_sequence.reverse()
                     node_neighbor.parent = node_new
                     node_neighbor.cost = new_cost
                     node_neighbor.u_parent_to_current = u_sequence
@@ -234,7 +246,6 @@ class LQRrrtStar:
         for ich in node.childrenNodeInds: 
             self.vertex[ich].cost = self.cal_LQR_new_cost(node,self.vertex[ich],cbf_check = False)[0]
             self.updateCosts(self.vertex[ich])
-            
 
     def search_goal_parent(self):
         dist_list = [math.hypot(n.x - self.s_goal.x, n.y - self.s_goal.y) for n in self.vertex]
@@ -256,7 +267,7 @@ class LQRrrtStar:
         adap_flag=self.AdSamplingFlag
         u_rand = np.random.uniform(0, 1)
         Vg_leaves = self.Vg_leaves
-        if not adap_flag or (u_rand > rce and len(Vg_leaves)==0): # Uniform sampling form the workspace: 
+        if not adap_flag or (u_rand > rce and len(Vg_leaves) == 0): # Uniform sampling form the workspace:
             if np.random.random() > goal_sample_rate:
                 return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
                             np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
@@ -279,14 +290,18 @@ class LQRrrtStar:
 
     def CE_Sample(self,Vg_leaves,h,N_qSamples):
         """
-        Exploit the samples of trajectories that reach the goal to adapt the sampling distribution towards the distribution of the rare event.
-        The trajectories that reach the goal will be disceretized to extract the elite samples that will be used to adapt (optimize)
+        Exploit the samples of trajectories that reach the goal to adapt the sampling distribution towards
+        the distribution of the rare event.
+        The trajectories that reach the goal will be disceretized to extract the elite samples that will be
+        used to adapt (optimize)
         the sampling distribution.
 
         :param Vg_leaves:
         :param h: The time step to discretize the trajectories
-        :param N_qSamples: A threshold indicates the number of samples that are sufficient enough to be exploited (TODO (Doc): How to decide this number)
-        :return: None: if the number of points of the discretized trajectories < N_qSamples, (x,y) samples from the estimated distribution
+        :param N_qSamples: A threshold indicates the number of samples that are sufficient enough to be exploited
+        (TODO (Doc): How to decide this number)
+        :return: None: if the number of points of the discretized trajectories < N_qSamples, (x,y) samples from the
+        estimated distribution
         """
         if len(Vg_leaves)>=(self.adapIter*30): #The acceptable number of trajectories to adapat upon
             frakX = []
@@ -323,7 +338,8 @@ class LQRrrtStar:
                 tStep_temp = tStep_init1+3
                 while tStep < len(traj2vg[:,1]):
                     pi_q_tStep = traj2vg[tStep,:]
-                    elite_cddtSample = [pi_q_tStep,vgcost2come] #This tuple contains the actual sample pi_q_tStep and the CostToCome to the goal of the corresponding trajectory
+                    elite_cddtSample = [pi_q_tStep,vgcost2come] #This tuple contains the actual sample pi_q_tStep
+                    # and the CostToCome to the goal of the corresponding trajectory
                     frakX.append(elite_cddtSample)
                     tStep = tStep + tStep_temp
             if self.adapIter == 1:
@@ -345,13 +361,17 @@ class LQRrrtStar:
     #Density estimate, kernel density or GMM:
     def CE_KDE_Sampling(self,frakX):
         """
-        Fit the elite samples to Kernel density estimate (KDE) or a GMM to generate from; and generate an (x,y) sample from the estimated
-        distribution. Checks if the CE between the previous density estimate and the current one below some threshold. In the case
+        Fit the elite samples to Kernel density estimate (KDE) or a GMM to generate from; and generate an (x,y)
+        sample from the estimated
+        distribution. Checks if the CE between the previous density estimate and the current one below some threshold.
+        In the case
         of KDE the expectation similarity measure could be used instead on the CE.
 
         NOTE to Ahmad:
-        You're using the CE with the KDE because you have the logistic probes of the samples and you use them; however, for
-        Kernel based distributions the expectation similarity could be used as well. One might reformulate the CE framework
+        You're using the CE with the KDE because you have the logistic probes of the samples and you use them;
+        however, for
+        Kernel based distributions the expectation similarity could be used as well. One might reformulate the
+        CE framework
         in terms of nonparametric distributions.
 
         :param frakX: The elite set of samples with the corresponding trajectory cost.
@@ -389,23 +409,15 @@ class LQRrrtStar:
                 if KL_div < .1:
                     self.kdeOpt_flag = True
                     
-                self.KDE_fitSamples = kde #This kde object will be used to sample form whn the optimal sampling distribution has been reached
+                self.KDE_fitSamples = kde
 
             self.KDE_pre_gridProbs = grid_probs
-            #Save the grid points with the corresponding probs, the cost, and the tree to plot them afterwards:
-            # saveData(self.goal_costToCome_list, 'adapCBF_RRTstr_Cost', suffix=self.suffix, CBF_RRT_strr_obj=self,
-            #          adapDist_iter=self.adapIter-1, enFlag=False)
-
-            # saveData([self.TreeT,self.vg_minCostToCome_list], 'adapCBF_RRTstr_Tree_CDC', suffix=self.suffix, CBF_RRT_strr_obj=self,
-            #          adapDist_iter=self.adapIter - 1, enFlag=False)
-            # saveData([Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape),elite_samples_arr], 'adapCBF_RRTstr_KDEgridProbs_CDC',
-            #          suffix=self.suffix, CBF_RRT_strr_obj=self,
-            #          adapDist_iter=self.adapIter - 1, enFlag=False)
 
             #Plot the distribution
             if self.plot_pdf_kde:
                 # self.initialize_graphPlot()
-                CS = plt.contour(Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape))  # , norm=LogNorm(vmin=4.18, vmax=267.1))
+                # , norm=LogNorm(vmin=4.18, vmax=267.1))
+                CS = plt.contour(Xxgrid, Xygrid, grid_probs.reshape(Xxgrid.shape))
                 # plt.colorbar(CS, shrink=0.8, extend='both')
                 plt.scatter(elite_samples_arr[:, 0], elite_samples_arr[:, 1])
                 plt.show()
@@ -442,19 +454,37 @@ class LQRrrtStar:
 
     def extract_path(self, node_end):
         path = [[self.s_goal.x, self.s_goal.y]]
+        path_continuous = []
+        path_continuous_formated = [[],[]]
         u_path = []
         node = node_end
 
         while node.parent is not None:
             path.append([node.x, node.y])
             u_path.extend(node.u_parent_to_current)
+            path_continuous.extend([node.state_parent_to_current[0], node.state_parent_to_current[1]])
             node = node.parent
         path.append([node.x, node.y])
 
         u_path_list = [[u_path[i].item(0, 0), u_path[i].item(1, 0)] for i in range(len(u_path))]
         u_path_list.reverse()
+        path_continuous.reverse()
+        path.reverse()
 
-        return path, u_path_list
+        for i in range(len(path_continuous)):
+            if i % 2 == 0:
+                path_continuous_formated[0].extend(path_continuous[i])
+
+        for i in range(len(path_continuous)):
+            if i % 2 != 0:
+                path_continuous_formated[1].extend(path_continuous[i])
+
+        # Add dummy velocity profile
+        zero_vel_list = [0.0] * len(path_continuous_formated[1])
+        path_continuous_formated.insert(1, zero_vel_list)
+        path_continuous_formated.insert(3, zero_vel_list)
+
+        return path, path_continuous_formated, u_path_list
 
     @staticmethod
     def get_distance_and_angle(node_start, node_end):
@@ -462,11 +492,16 @@ class LQRrrtStar:
         dy = node_end.y - node_start.y
         return math.hypot(dx, dy), math.atan2(dy, dx)
 
-    def save_state_and_control_trajectory_as_numpy(self, control_list):
-        os_path_for_state = os.path.join('linear_dynamic_model', 'output_state_control_trajs','state_double_intergrator_traj.npy')
-        os_path_for_control = os.path.join('linear_dynamic_model', 'output_state_control_trajs', 'control_double_intergrator_traj.npy')
+    def save_state_and_control_trajectory_as_numpy(self, state_list, control_list):
+        cwd = os.getcwd()
+        os_path_for_state = os.path.join(cwd, 'output_state_control_trajs',
+                                         'state_double_integrator_traj.npy')
+        os_path_for_control = os.path.join(cwd, 'output_state_control_trajs',
+                                           'control_double_integrator_traj.npy')
         print("Saving state and control trajectory...")
+
         np.save(os_path_for_control, np.array(control_list))
+        np.save(os_path_for_state, np.array(state_list))
         print("Complete.")
 
 def main():
@@ -474,7 +509,6 @@ def main():
     # x_goal = (37, 18)  # Goal node
     x_start = (2.0, 2.0)  # Starting node
     x_goal = (30.0, 24.0)  # Goal node
-
 
     rrt_star = LQRrrtStar(x_start, x_goal, 10, 0.10, 20, 500, AdSamplingFlag = False)
     rrt_star.planning()
