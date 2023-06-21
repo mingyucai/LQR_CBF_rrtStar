@@ -12,8 +12,6 @@ To improve sampling efficiency, we employ the Cross-Entropy Method (CEM) for imp
 The code was tested on Mac OS 13.4 with Python 3.10.0. the required packages are listed in requirements.txt. 
 
 ## Preview
-<img src="/figures/LQR-CBF_result.PNG?raw=true" width="800"/>
-
 ![LQR-CBF-RRT-Exp](https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/121e29cb-0ac2-4d48-829c-7a20a826b7fb)
 
 https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/b299b063-fe28-4da9-b1b8-45bc8bfef093
