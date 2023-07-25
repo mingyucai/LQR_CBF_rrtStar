@@ -52,4 +52,4 @@ This allows to identify the performance for both linear and non-linear systems.
 
 ## Q/A Contact and Contributors
 
-Mingyu Cai, Guang Yang, Ahmad G. Ahmad
+Guang Yang, Mingyu Cai, Ahmad G. Ahmad
