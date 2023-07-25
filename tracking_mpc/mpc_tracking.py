@@ -17,15 +17,16 @@ This code takes into waypoints (positions in 2d) and caclulate the velocity prof
 
 '''
 class MPC_controller:
-    def __init__(self, MPC_horizon, dt, state_weight, control_weight, x_init, obstacles,
+    def __init__(self, MPC_horizon, dt, state_weight, control_weight, interpolated_dist, x_init, obstacles,
                  show_animation=True, save_animation = False) -> None:
         self.N = MPC_horizon
         self.dt = dt
+        self.interpolated_dist = interpolated_dist
         self.Q = state_weight
         self.R = control_weight
         self.obstacles = obstacles
         self.Qf = self.Q
-        self.v_lim = [-5.0, 5.0]
+        self.v_lim = [-1.0, 1.0]
         self.u_max = 20.0
         self.x_init = x_init
         self.save_animation = save_animation
@@ -34,9 +35,9 @@ class MPC_controller:
 
         self.state_dimension = 4
         self.control_dimension = 2
-        self.goal_dist = 0.2
+        self.goal_dist = 0.1
 
-        self.simulation_max_time = 40.0
+        self.simulation_max_time = 30.0
 
 
     
@@ -122,20 +123,55 @@ class MPC_controller:
     def within_goal(self, x_current, x_goal):
         return np.linalg.norm(x_current - x_goal) <= self.goal_dist
 
-    def calculate_local_reference(self, x_ref, t_step):
+    def nearest_interpolated_point(self, x_ref, x_current,target_index):
+        # find nearest point on the interpolated trajectory
+        N_indx_search = 10 # search for the next 10 point
+        dx = [x_current[0]-icx for icx in x_ref[0][target_index:target_index+N_indx_search]]
+        dy = [x_current[2]-icy for icy in x_ref[2][target_index:target_index+N_indx_search]]
+        d = [idx**2 + idy**2 for (idx, idy) in zip(dx, dy)]
+        mind = min(d)
+        ind = d.index(mind) + target_index
 
-        # Create an x_local_ref as a shifting window over time.
-        x_local_ref = np.zeros((self.state_dimension, self.N+1))
+        return ind
 
-        if t_step < len(x_ref[0])-self.N-1:
+    def calculate_local_reference(self, x_ref, t_step, x_current ,target_index = 0, tracking_mode = "running_time"):
+        if tracking_mode == "running_time":
+            # Create an x_local_ref as a shifting window over time.
+            x_local_ref = np.zeros((self.state_dimension, self.N+1))
+
+            if t_step < len(x_ref[0])-self.N-1:
+                for i in range(self.N+1):
+                    x_local_ref[:, i] = x_ref[:, i+t_step]
+            else:
+                print("running out of reference trajectory")
+                for i in range(self.N+1):
+                    x_local_ref[:, i] = x_ref[:, -1]
+        elif tracking_mode == "closest_interpolated_point":
+            # Select the closest point to track
+            x_local_ref = np.zeros((self.state_dimension, self.N+1))
+            total_interpolated_points_len = len(x_ref[0])
+
+            ind = self.nearest_interpolated_point(x_ref, x_current, target_index)
+            if target_index >= ind:
+                ind = target_index
+            
+            x_local_ref[0,0] = x_ref[0,ind]
+            x_local_ref[1,0] = x_ref[1,ind]
+            x_local_ref[2,0] = x_ref[2,ind]
+            x_local_ref[3,0] = x_ref[3,ind]
+
             for i in range(self.N+1):
-                x_local_ref[:, i] = x_ref[:, i+t_step]
-        else:
-            print("running out of reference trajectory")
-            for i in range(self.N+1):
-                x_local_ref[:, i] = x_ref[:, -1]
-        # Select the closest point to track
-        return x_local_ref
+                if (ind+self.N) < total_interpolated_points_len:
+                    x_local_ref[0,i] = x_ref[0,ind+i]
+                    x_local_ref[1,i] = x_ref[1,ind+i]
+                    x_local_ref[2,i] = x_ref[2,ind+i]
+                    x_local_ref[3,i] = x_ref[3,ind+i]
+                else:
+                    x_local_ref[0,i] = x_ref[0,-1]
+                    x_local_ref[1,i] = x_ref[1,-1]
+                    x_local_ref[2,i] = x_ref[2,-1]
+                    x_local_ref[3,i] = x_ref[3,-1]
+        return x_local_ref, ind # this ind is the target index for the next time step
 
     def simulation(self, x_ref):
         time = 0
@@ -143,10 +179,12 @@ class MPC_controller:
         simulation_traj = [x_current.copy()]
         u_traj = []
 
-        t_step = 0
+        t_step = 0 # time step for tracking_mode = "running_time"
+        target_idx = 0 # target index for tracking_mode = "closest_interpolated_point"
 
         while time < self.simulation_max_time:
-            x_local_ref = self.calculate_local_reference(x_ref, t_step)
+            x_local_ref, target_idx = self.calculate_local_reference(x_ref, t_step, x_current, target_index=target_idx, 
+                                                         tracking_mode = "closest_interpolated_point")
             x1_traj_N, x2_traj_N, x3_traj_N, x4_traj_N, u1_traj_N, u2_traj_N = self.mpc_control(x_local_ref, x_current)
 
             if x1_traj_N is None:
@@ -160,7 +198,7 @@ class MPC_controller:
                 time += self.dt
 
             if self.within_goal([x_current[0], x_current[2]], waypoints[-1]):
-                print("Reach goal")
+                print("Goal is reached!")
                 break
 
             t_step += 1
@@ -246,19 +284,20 @@ class MPC_controller:
 
 if __name__ == "__main__":
     plot_border = 32
-    target_speed = 10.0  # [m/s]
-    interpolated_dist = 0.2  # [m] distance between interpolated position state
-    obstacles = [(15,10,2)] # Circular Obstacles [(x1,x3,radius)]
+    target_speed = 1.5  # [m/s]
+    interpolated_dist = 0.1  # [m] distance between interpolated position state, This is critical
+    obstacles = [[]] # Circular Obstacles [(x1,x3,radius)]
 
-    path_to_continuous_waypoints = (pathlib.Path(__file__) / ".." / ".."/"linear_dynamic_model/output_state_control_trajs/state_double_integrator_traj.npy").resolve()
+    path_to_continuous_waypoints = (pathlib.Path(__file__) / ".." / ".."/"experiment/output_state_control_trajs/state_double_integrator_traj.npy").resolve()
     waypoints = read_waypoints(path_to_continuous_waypoints)
 
     x_init = np.array([waypoints[0, 0], 0.0, waypoints[0, 1], 0.0])  # [p1,v1,p2,v2]
 
-    MPC = MPC_controller(MPC_horizon=5,dt=0.2,
-                        state_weight=np.diag([5.0, 0.1, 5.0, 0.1]), # Q matrix
-                        control_weight=np.diag([0.1, 0.1]),x_init=x_init,obstacles=obstacles,
-                         show_animation=True,save_animation = False) # R matrix
+    MPC = MPC_controller(MPC_horizon=7,dt=0.08,
+                        state_weight=np.diag([6.0, 3.0, 6.0, 3.0]), # Q matrix
+                        control_weight=np.diag([0.02, 0.02]),interpolated_dist = interpolated_dist,
+                        x_init=x_init,obstacles=obstacles,
+                        show_animation=True,save_animation = False)
 
     x_ref = MPC.waypoints_to_x_ref(waypoints, interpolated_dist, target_speed, interpolation_type="linear")
 
@@ -268,10 +307,10 @@ if __name__ == "__main__":
     ax.plot(simulation_traj[:,[0]], simulation_traj[:,[2]], marker='o', linestyle='-', color='blue', label='MPC Path')
     ax.plot(x_ref[0].flatten(), x_ref[2].flatten(),marker = '.', linestyle='--', color='grey', label='x_ref')
     ax.scatter(waypoints[:,[0]], waypoints[:,[1]], marker='o', color='black', label='waypoints',s=100)
-    ax.set_xticks(range(plot_border))
-    ax.set_yticks(range(plot_border))
-    ax.set_xlim([-0.5, plot_border - 0.5])
-    ax.set_ylim([-0.5, plot_border - 0.5])
+
+    ax.set_xlim([-2.0, 2.0])
+    ax.set_ylim([-4.00, 4.00])
+    ax.set_aspect('equal', adjustable='box')
 
     ax.set_title("MPC Tracking")
     ax.set_xlabel("X1-coordinate")
