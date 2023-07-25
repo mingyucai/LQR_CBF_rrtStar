@@ -12,9 +12,15 @@ To improve sampling efficiency, we employ the Cross-Entropy Method (CEM) for imp
 The code was tested on Mac OS 13.4 with Python 3.10.0. the required packages are listed in requirements.txt. 
 
 ## Preview
-![LQR-CBF-RRT-Exp](https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/121e29cb-0ac2-4d48-829c-7a20a826b7fb)
+Hardware Platform
+We use a customized DJI Robomaster as our experimental platform. The robot contains four omnidirectional wheels that allow it to move in any direction. The robot takes in velocity command [vx, vy] as the input, and inverse kinematics is calculated to output the corresponding wheel's speed. The robot is equipped with a Raspberry Pi running ROS2 as the communication middleware, and we use an external telemetry tracking system (OptiTrack) for positional tracking to simulate an outdoor GPS-enabled environment. 
+![robomaster](https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/23220614-9310-456b-9284-09b54919f60a)
 
-https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/b299b063-fe28-4da9-b1b8-45bc8bfef093
+Experiment with real Hardware
+We performed an experiment with the real hardware. The robot uses its own online MPC controller to track the generated optimal trajectory. 
+
+https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/4c86de33-fe37-4533-afbd-0b2c71a4ca7e
+
 
 
 ### Citing
