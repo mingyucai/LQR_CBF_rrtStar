@@ -11,12 +11,17 @@ To improve sampling efficiency, we employ the Cross-Entropy Method (CEM) for imp
 
 The code was tested on Mac OS 13.4 with Python 3.10.0. the required packages are listed in requirements.txt. 
 
-## Preview
-Hardware Platform
-We use a customized DJI Robomaster as our experimental platform. The robot contains four omnidirectional wheels that allow it to move in any direction. The robot takes in velocity command [vx, vy] as the input, and inverse kinematics is calculated to output the corresponding wheel's speed. The robot is equipped with a Raspberry Pi running ROS2 as the communication middleware, and we use an external telemetry tracking system (OptiTrack) for positional tracking to simulate an outdoor GPS-enabled environment. 
+## Simulation and Experiment
+### Demonstration of LQR-CBF-RRT*
+We designed a challenging navigation scenario where the workspace has six obstacles in close proximity. A robot is required to navigate from the lower left corner to the top right corner without any collisions. Our method is able to generate an optimal and safe trajectory plan efficiently. The result is shown as the following:  
+<img width="612" alt="Screenshot 2023-07-25 at 18 30 08" src="https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/fe97a0fd-4b88-4b9b-9a5b-c6833e44ff74">
+
+
+### Hardware Platform
+To validate our apparoch, we use a customized DJI Robomaster as our experimental platform. The robot contains four omnidirectional wheels that allow it to move in any direction. The robot takes in velocity command [vx, vy] as the input, and inverse kinematics is calculated to output the corresponding wheel's speed. The robot is equipped with a Raspberry Pi running ROS2 as the communication middleware, and we use an external telemetry tracking system (OptiTrack) for positional tracking to simulate an outdoor GPS-enabled environment. 
 ![robomaster](https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/23220614-9310-456b-9284-09b54919f60a)
 
-Experiment with real Hardware
+### Experiment with real Hardware
 We performed an experiment with the real hardware. The robot uses its own online MPC controller to track the generated optimal trajectory. 
 
 https://github.com/gy2256/LQR_CBF_rrtStar/assets/4914320/4c86de33-fe37-4533-afbd-0b2c71a4ca7e
