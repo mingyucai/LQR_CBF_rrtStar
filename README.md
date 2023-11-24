@@ -51,6 +51,8 @@ python LQR_CBF_rrtStar_..py
 ```
 This allows to identify the performance for both linear and non-linear systems.
 
+## Credit
+The spline/velocity profile calculation in MPC is based on https://github.com/AtsushiSakai/PythonRobotics.git.
 
 ## Q/A Contact and Contributors
 
