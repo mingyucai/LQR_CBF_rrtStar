@@ -169,7 +169,7 @@ class LQRPlanner:
 
         B = np.zeros((self.N, self.M))
         B[0, 0] = np.cos(theta)
-        B[1, 1] = np.sin(theta)
+        B[1, 0] = np.sin(theta)
         B[2, 1] = 1
         B_lin = self.DT * B
 
