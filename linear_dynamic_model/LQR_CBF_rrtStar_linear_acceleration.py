@@ -107,7 +107,7 @@ class LQRrrtStar:
                 if node_new is None: 
                     continue
                 g_node = self.LQR_steer(node_new, self.s_goal, exact_steering = False)
-                if g_node is not None and not self.utils.is_collision(node_new, node_new):
+                if g_node is not None and not self.utils.is_collision(node_new, g_node):
                     self.Vg_leaves.append(g_node)
             # <<< End extend to the goal
         
