@@ -1,6 +1,7 @@
 import collections
 import heapq
 
+
 class QueueFIFO:
     """
     Class: QueueFIFO

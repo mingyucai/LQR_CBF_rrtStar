@@ -14,8 +14,9 @@ class Node:
 
 
 class RrtStar:
-    def __init__(self, x_start, x_goal, step_len,
-                 goal_sample_rate, search_radius, iter_max):
+    def __init__(
+        self, x_start, x_goal, step_len, goal_sample_rate, search_radius, iter_max
+    ):
         self.s_start = Node(x_start)
         self.s_goal = Node(x_goal)
         self.step_len = step_len
@@ -42,7 +43,7 @@ class RrtStar:
             node_new = self.new_state(node_near, node_rand)
 
             if k % 2000 == 0:
-                print('rrtStar sampling iterations: ', k)
+                print("rrtStar sampling iterations: ", k)
                 self.plotting.animation_online(self.vertex, "rrtStar", True)
 
             if node_new and not self.utils.is_collision(node_near, node_new):
@@ -56,14 +57,20 @@ class RrtStar:
         index = self.search_goal_parent()
         self.path = self.extract_path(self.vertex[index])
 
-        self.plotting.animation(self.vertex, self.path, "rrt*, N = " + str(self.iter_max))
+        self.plotting.animation(
+            self.vertex, self.path, "rrt*, N = " + str(self.iter_max)
+        )
 
     def new_state(self, node_start, node_goal):
         dist, theta = self.get_distance_and_angle(node_start, node_goal)
 
         dist = min(self.step_len, dist)
-        node_new = Node((node_start.x + dist * math.cos(theta),
-                         node_start.y + dist * math.sin(theta)))
+        node_new = Node(
+            (
+                node_start.x + dist * math.cos(theta),
+                node_start.y + dist * math.sin(theta),
+            )
+        )
 
         node_new.parent = node_start
 
@@ -83,12 +90,17 @@ class RrtStar:
                 node_neighbor.parent = node_new
 
     def search_goal_parent(self):
-        dist_list = [math.hypot(n.x - self.s_goal.x, n.y - self.s_goal.y) for n in self.vertex]
+        dist_list = [
+            math.hypot(n.x - self.s_goal.x, n.y - self.s_goal.y) for n in self.vertex
+        ]
         node_index = [i for i in range(len(dist_list)) if dist_list[i] <= self.step_len]
 
         if len(node_index) > 0:
-            cost_list = [dist_list[i] + self.cost(self.vertex[i]) for i in node_index
-                         if not self.utils.is_collision(self.vertex[i], self.s_goal)]
+            cost_list = [
+                dist_list[i] + self.cost(self.vertex[i])
+                for i in node_index
+                if not self.utils.is_collision(self.vertex[i], self.s_goal)
+            ]
             return node_index[int(np.argmin(cost_list))]
 
         return len(self.vertex) - 1
@@ -102,8 +114,12 @@ class RrtStar:
         delta = self.utils.delta
 
         if np.random.random() > goal_sample_rate:
-            return Node((np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
-                         np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta)))
+            return Node(
+                (
+                    np.random.uniform(self.x_range[0] + delta, self.x_range[1] - delta),
+                    np.random.uniform(self.y_range[0] + delta, self.y_range[1] - delta),
+                )
+            )
 
         return self.s_goal
 
@@ -111,16 +127,23 @@ class RrtStar:
         n = len(self.vertex) + 1
         r = min(self.search_radius * math.sqrt((math.log(n) / n)), self.step_len)
 
-        dist_table = [math.hypot(nd.x - node_new.x, nd.y - node_new.y) for nd in self.vertex]
-        dist_table_index = [ind for ind in range(len(dist_table)) if dist_table[ind] <= r and
-                            not self.utils.is_collision(node_new, self.vertex[ind])]
+        dist_table = [
+            math.hypot(nd.x - node_new.x, nd.y - node_new.y) for nd in self.vertex
+        ]
+        dist_table_index = [
+            ind
+            for ind in range(len(dist_table))
+            if dist_table[ind] <= r
+            and not self.utils.is_collision(node_new, self.vertex[ind])
+        ]
 
         return dist_table_index
 
     @staticmethod
     def nearest_neighbor(node_list, n):
-        return node_list[int(np.argmin([math.hypot(nd.x - n.x, nd.y - n.y)
-                                        for nd in node_list]))]
+        return node_list[
+            int(np.argmin([math.hypot(nd.x - n.x, nd.y - n.y) for nd in node_list]))
+        ]
 
     @staticmethod
     def cost(node_p):
@@ -173,5 +196,5 @@ def main():
     rrt_star.planning()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

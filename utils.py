@@ -25,11 +25,13 @@ class Utils:
         delta = self.delta
         obs_list = []
 
-        for (ox, oy, w, h) in self.obs_rectangle:
-            vertex_list = [[ox - delta, oy - delta],
-                           [ox + w + delta, oy - delta],
-                           [ox + w + delta, oy + h + delta],
-                           [ox - delta, oy + h + delta]]
+        for ox, oy, w, h in self.obs_rectangle:
+            vertex_list = [
+                [ox - delta, oy - delta],
+                [ox + w + delta, oy - delta],
+                [ox + w + delta, oy + h + delta],
+                [ox - delta, oy + h + delta],
+            ]
             obs_list.append(vertex_list)
 
         return obs_list
@@ -78,7 +80,7 @@ class Utils:
         o, d = self.get_ray(start, end)
         obs_vertex = self.get_obs_vertex()
 
-        for (v1, v2, v3, v4) in obs_vertex:
+        for v1, v2, v3, v4 in obs_vertex:
             if self.is_intersect_rec(start, end, o, d, v1, v2):
                 return True
             if self.is_intersect_rec(start, end, o, d, v2, v3):
@@ -88,7 +90,7 @@ class Utils:
             if self.is_intersect_rec(start, end, o, d, v4, v1):
                 return True
 
-        for (x, y, r) in self.obs_circle:
+        for x, y, r in self.obs_circle:
             if self.is_intersect_circle(o, d, [x, y], r):
                 return True
 
@@ -97,18 +99,22 @@ class Utils:
     def is_inside_obs(self, node):
         delta = self.delta
 
-        for (x, y, r) in self.obs_circle:
+        for x, y, r in self.obs_circle:
             if math.hypot(node.x - x, node.y - y) <= r + delta:
                 return True
 
-        for (x, y, w, h) in self.obs_rectangle:
-            if 0 <= node.x - (x - delta) <= w + 2 * delta \
-                    and 0 <= node.y - (y - delta) <= h + 2 * delta:
+        for x, y, w, h in self.obs_rectangle:
+            if (
+                0 <= node.x - (x - delta) <= w + 2 * delta
+                and 0 <= node.y - (y - delta) <= h + 2 * delta
+            ):
                 return True
 
-        for (x, y, w, h) in self.obs_boundary:
-            if 0 <= node.x - (x - delta) <= w + 2 * delta \
-                    and 0 <= node.y - (y - delta) <= h + 2 * delta:
+        for x, y, w, h in self.obs_boundary:
+            if (
+                0 <= node.x - (x - delta) <= w + 2 * delta
+                and 0 <= node.y - (y - delta) <= h + 2 * delta
+            ):
                 return True
 
         return False
@@ -122,6 +128,7 @@ class Utils:
     @staticmethod
     def get_dist(start, end):
         return math.hypot(end.x - start.x, end.y - start.y)
+
     @staticmethod
     def integrate_single_integrator(self, x_init, u, dt):
         # dimension 2, position [x1,x2]^T, control u = [u1,u2]^T, dt comes from control updates
@@ -136,20 +143,23 @@ class Utils:
             x_traj = np.concatenate((x_traj, x_current), axis=0)
         return x_traj
 
-
     @staticmethod
     def integrate_double_integrator(x_init, u, dt):
         # dimension 4, [x1,x2,x3,x4]^T [pos_1, vel_1, pos_2, vel_2]^T, control u = [u1,u2]^T, dt comes from control updates
-        x_traj = np.array([x_init],dtype=np.float32)
+        x_traj = np.array([x_init], dtype=np.float32)
         x_current = x_traj.copy()
         num_steps = len(u)
 
         for i in range(num_steps):
             u_current = u[i]
-            x_current[0,0] = x_current[0,0] + x_current[0,1] * dt + 0.5 * u_current[0] * dt ** 2
-            x_current[0,1] = x_current[0,1] + dt * u_current[0]
-            x_current[0,2] = x_current[0,2] + x_current[0,3] * dt + 0.5 * u_current[1] * dt ** 2
-            x_current[0,3] = x_current[0,3] + dt * u_current[1]
+            x_current[0, 0] = (
+                x_current[0, 0] + x_current[0, 1] * dt + 0.5 * u_current[0] * dt**2
+            )
+            x_current[0, 1] = x_current[0, 1] + dt * u_current[0]
+            x_current[0, 2] = (
+                x_current[0, 2] + x_current[0, 3] * dt + 0.5 * u_current[1] * dt**2
+            )
+            x_current[0, 3] = x_current[0, 3] + dt * u_current[1]
             x_traj = np.concatenate((x_traj, x_current), axis=0)
 
         return x_traj

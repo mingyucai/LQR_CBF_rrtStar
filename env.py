@@ -8,12 +8,7 @@ class Env:
 
     @staticmethod
     def obs_boundary():  # circle
-        obs_boundary = [
-            [0, 0, 1, 30],
-            [0, 30, 50, 1],
-            [1, 0, 50, 1],
-            [50, 1, 1, 30]
-        ]
+        obs_boundary = [[0, 0, 1, 30], [0, 30, 50, 1], [1, 0, 50, 1], [50, 1, 1, 30]]
         return obs_boundary
 
     @staticmethod
@@ -36,7 +31,7 @@ class Env:
             [15, 5, 2],
             [15, 15, 2],
             [37, 7, 3],
-            [37, 23, 3]
+            [37, 23, 3],
         ]
 
         return obs_cir

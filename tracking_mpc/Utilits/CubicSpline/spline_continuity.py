@@ -1,4 +1,3 @@
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate
@@ -31,9 +30,11 @@ def main():
     plt.subplots(1)
     plt.plot(x, y, "xb", label="Data points")
 
-    for (kind, label) in [("linear", "C0 (Linear spline)"),
-                          ("quadratic", "C0 & C1 (Quadratic spline)"),
-                          ("cubic", "C0 & C1 & C2 (Cubic spline)")]:
+    for kind, label in [
+        ("linear", "C0 (Linear spline)"),
+        ("quadratic", "C0 & C1 (Quadratic spline)"),
+        ("cubic", "C0 & C1 & C2 (Cubic spline)"),
+    ]:
         rx, ry = [], []
         sp = Spline2D(x, y, kind=kind)
         s = np.arange(0, sp.s[-1], ds)
@@ -51,5 +52,5 @@ def main():
     plt.show()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -4,6 +4,7 @@ Cubic spline planner
 Author: Atsushi Sakai(@Atsushi_twi)
 
 """
+
 import math
 import numpy as np
 import bisect
@@ -65,8 +66,9 @@ class CubicSpline1D:
         # calc spline coefficient b and d
         for i in range(self.nx - 1):
             d = (self.c[i + 1] - self.c[i]) / (3.0 * h[i])
-            b = 1.0 / h[i] * (self.a[i + 1] - self.a[i]) \
-                - h[i] / 3.0 * (2.0 * self.c[i] + self.c[i + 1])
+            b = 1.0 / h[i] * (self.a[i + 1] - self.a[i]) - h[i] / 3.0 * (
+                2.0 * self.c[i] + self.c[i + 1]
+            )
             self.d.append(d)
             self.b.append(b)
 
@@ -88,8 +90,9 @@ class CubicSpline1D:
 
         i = self.__search_index(x)
         dx = x - self.x[i]
-        position = self.a[i] + self.b[i] * dx + \
-            self.c[i] * dx ** 2.0 + self.d[i] * dx ** 3.0
+        position = (
+            self.a[i] + self.b[i] * dx + self.c[i] * dx**2.0 + self.d[i] * dx**3.0
+        )
 
         return position
 
@@ -112,7 +115,7 @@ class CubicSpline1D:
 
         i = self.__search_index(x)
         dx = x - self.x[i]
-        dy = self.b[i] + 2.0 * self.c[i] * dx + 3.0 * self.d[i] * dx ** 2.0
+        dy = self.b[i] + 2.0 * self.c[i] * dx + 3.0 * self.d[i] * dx**2.0
         return dy
 
     def calc_second_derivative(self, x):
@@ -166,8 +169,9 @@ class CubicSpline1D:
         """
         B = np.zeros(self.nx)
         for i in range(self.nx - 2):
-            B[i + 1] = 3.0 * (a[i + 2] - a[i + 1]) / h[i + 1]\
-                - 3.0 * (a[i + 1] - a[i]) / h[i]
+            B[i + 1] = (
+                3.0 * (a[i + 2] - a[i + 1]) / h[i + 1] - 3.0 * (a[i + 1] - a[i]) / h[i]
+            )
         return B
 
 
@@ -284,7 +288,7 @@ class CubicSpline2D:
         ddx = self.sx.calc_second_derivative(s)
         dy = self.sy.calc_first_derivative(s)
         ddy = self.sy.calc_second_derivative(s)
-        k = (ddy * dx - ddx * dy) / ((dx ** 2 + dy ** 2)**(3 / 2))
+        k = (ddy * dx - ddx * dy) / ((dx**2 + dy**2) ** (3 / 2))
         return k
 
     def calc_yaw(self, s):
@@ -326,14 +330,16 @@ def calc_spline_course(x, y, ds=0.1):
 def main_1d():
     print("CubicSpline1D test")
     import matplotlib.pyplot as plt
+
     x = np.arange(5)
     y = [1.7, -6, 5, 6.5, 0.0]
     sp = CubicSpline1D(x, y)
     xi = np.linspace(0.0, 5.0)
 
     plt.plot(x, y, "xb", label="Data points")
-    plt.plot(xi, [sp.calc_position(x) for x in xi], "r",
-             label="Cubic spline interpolation")
+    plt.plot(
+        xi, [sp.calc_position(x) for x in xi], "r", label="Cubic spline interpolation"
+    )
     plt.grid(True)
     plt.legend()
     plt.show()
@@ -342,6 +348,7 @@ def main_1d():
 def main_2d():  # pragma: no cover
     print("CubicSpline1D 2D test")
     import matplotlib.pyplot as plt
+
     x = [-2.5, 0.0, 2.5, 5.0, 7.5, 3.0, -1.0]
     y = [0.7, -6, 5, 6.5, 0.0, 5.0, -2.0]
     ds = 0.1  # [m] distance of each interpolated points
@@ -383,6 +390,6 @@ def main_2d():  # pragma: no cover
     plt.show()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # main_1d()
     main_2d()
